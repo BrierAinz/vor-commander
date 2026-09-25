@@ -169,7 +169,7 @@ Contributions are welcome. See `CONTRIBUTING.md` for the process, coding style a
 
 ---
 
-## Resumen en espanol
+## Resumen en español
 
 Vör Commander es un agente local para Windows con gateway MCP, escrito en Rust. Permite que asistentes de IA (Claude, ChatGPT, Cursor, VS Code) accedan de forma controlada a ficheros, git, procesos y un terminal acotado dentro de las carpetas que tu autorices.
 
