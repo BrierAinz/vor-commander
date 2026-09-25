@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vör Commander — piloto privado</title>
+  <meta name="description" content="Vör Commander da a tu asistente de IA acceso controlado a archivos, git, procesos y un terminal acotado en tu PC con Windows, con aprobaciones firmadas, auditoría a prueba de manipulación y sin puertos abiertos.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Vör Commander — piloto privado">
+  <meta property="og:description" content="El mismo poder sobre tu máquina, con seguridad que puedes demostrar: aprobaciones firmadas, auditoría y sin puertos abiertos.">
+  <meta property="og:locale" content="es_ES">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/theme-init.js"></script>
+  <script src="assets/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#top" aria-label="Vör Commander, inicio">
+        <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#0f1720"/><path d="M8 8l8 17 8-17" fill="none" stroke="#7cc4ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.5" cy="6" r="1.6" fill="#f5b942"/><circle cx="19.5" cy="6" r="1.6" fill="#f5b942"/></svg>
+        Vör Commander
+      </a>
+      <nav class="nav" aria-label="Principal">
+        <ul class="nav-links">
+          <li><a href="#como-funciona">Cómo funciona</a></li>
+          <li><a href="#seguridad">Seguridad</a></li>
+          <li><a href="#comparativa">Comparativa</a></li>
+          <li><a href="#instalacion">Instalación</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+        <a class="btn btn-primary btn-sm header-cta" href="#precio">Unirme al piloto</a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema" aria-pressed="false">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.7 14.3A8.5 8.5 0 0 1 9.7 3.3a.75.75 0 0 0-.98-.9A10 10 0 1 0 21.6 15.3a.75.75 0 0 0-.9-1z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- Hero -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="wrap">
+        <span class="eyebrow">Piloto privado · Windows</span>
+        <h1 id="hero-title">Tu asistente de IA trabaja en tu PC. <span>Tú decides qué puede tocar.</span></h1>
+        <p class="lead">Vör Commander es un agente remoto con gateway MCP, escrito en Rust para Windows. Da a tu asistente de IA acceso controlado a archivos, git, procesos y un terminal acotado en tu máquina, con aprobaciones firmadas, auditoría a prueba de manipulación y sin abrir puertos de entrada.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#precio">Solicitar acceso al piloto</a>
+          <a class="btn btn-ghost" href="#como-funciona">Ver cómo funciona</a>
+        </div>
+        <p class="hero-note">El mismo poder sobre tu máquina, con seguridad que puedes demostrar.</p>
+        <ul class="clients" aria-label="Asistentes compatibles">
+          <li>Claude <small>(conector remoto)</small></li>
+          <li>ChatGPT <small>(conector de solo lectura, validado)</small></li>
+          <li>Cursor <small>(en el piloto)</small></li>
+          <li>VS Code <small>(en el piloto)</small></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Problema -->
+    <section class="alt" id="problema" aria-labelledby="problema-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">El problema</span>
+          <h2 id="problema-title">Dar manos a una IA en tu máquina no debería ser un acto de fe</h2>
+          <p class="lead">Los asistentes ya escriben código, ejecutan comandos y leen tu repositorio. Lo difícil es hacerlo sin entregar el control del equipo.</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>¿Quién aprobó eso?</h3>
+            <p>Una escritura o un comando que nadie revisó es una escritura o un comando que nadie puede explicar después. Hace falta una aprobación ligada a la acción exacta, no un «sí» genérico.</p>
+          </div>
+          <div class="card">
+            <h3>¿Qué pasó realmente?</h3>
+            <p>Si el registro de lo ocurrido se puede editar, no sirve como prueba. Hace falta una auditoría encadenada que delate cualquier manipulación.</p>
+          </div>
+          <div class="card">
+            <h3>¿Por dónde entra?</h3>
+            <p>Abrir un puerto en tu PC para que una IA en la nube llegue a él amplía la superficie de ataque. El agente debería salir hacia fuera, no esperar conexiones.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cómo funciona -->
+    <section id="como-funciona" aria-labelledby="como-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Cómo funciona</span>
+          <h2 id="como-title">Del asistente a tu PC, sin atajos</h2>
+          <p class="lead">Cada petición pasa por el gateway MCP y viaja por un túnel privado hasta el agente de tu PC, que vuelve a evaluar la política antes de actuar.</p>
+        </div>
+
+        <figure class="flow-figure" aria-labelledby="flow-caption">
+          <ol class="flow">
+            <li>
+              <h3>Asistente de IA</h3>
+              <p>Claude o ChatGPT como conector remoto con OAuth y PKCE; Cursor y VS Code en local con el piloto.</p>
+            </li>
+            <li>
+              <h3>Gateway MCP</h3>
+              <p>Autentica, aplica el alcance de la sesión y expone solo herramientas controladas.</p>
+            </li>
+            <li>
+              <h3>Túnel privado</h3>
+              <p>Transporte mTLS privado. El agente sale hacia fuera: ningún puerto de entrada en tu PC.</p>
+            </li>
+            <li>
+              <h3>Agente en tu PC</h3>
+              <p>Reevalúa la política local, confina rutas y ejecuta solo dentro de tus carpetas permitidas.</p>
+            </li>
+          </ol>
+          <div class="flow-rails">
+            <div class="rail rail-approve">
+              <h3>Aprobaciones</h3>
+              <p>Escrituras y comandos de terminal esperan tu aprobación firmada (Ed25519), ligada a la petición exacta y de un solo uso.</p>
+            </div>
+            <div class="rail rail-audit">
+              <h3>Auditoría</h3>
+              <p>Cada autorización, aprobación y ejecución queda en un registro encadenado por hash (SQLite + JSONL).</p>
+            </div>
+          </div>
+          <figcaption id="flow-caption" class="note">Flujo: asistente → gateway MCP → túnel privado → agente en tu PC, con aprobaciones y auditoría en cada paso.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Funciones -->
+    <section class="alt" id="funciones" aria-labelledby="funciones-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Funciones</span>
+          <h2 id="funciones-title">Lo que tu asistente puede hacer</h2>
+          <p class="lead">Marcamos con claridad qué funciona hoy y qué llega con el piloto.</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>Archivos <span class="tag tag-live">Hoy</span></h3>
+            <ul>
+              <li>Leer archivos dentro de tus carpetas permitidas.</li>
+              <li>Escribir en dos pasos: preparar y confirmar con aprobación firmada.</li>
+              <li>Hasta 1 MiB por escritura, con comprobación SHA-256 antes y después y reemplazo atómico con copia de seguridad.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Git y procesos <span class="tag tag-live">Hoy</span></h3>
+            <ul>
+              <li><code>git status</code> y <code>git diff</code> del repositorio.</li>
+              <li>Listar e inspeccionar procesos.</li>
+              <li>Solo lectura: no hay herramienta pública para terminar procesos.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Terminal acotado <span class="tag tag-live">Hoy</span></h3>
+            <ul>
+              <li>Argumentos estructurados, nunca una cadena de shell opaca.</li>
+              <li>Directorio de trabajo confinado, máximo 120 s y 1 MiB de salida.</li>
+              <li>Sesiones asíncronas: consultar y cancelar solo las tuyas.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Explorar el proyecto <span class="tag tag-soon">En el piloto</span></h3>
+            <ul>
+              <li><code>list_directory</code>, <code>search_files</code> y <code>search_content</code> con límites.</li>
+              <li><code>file_info</code> para metadatos.</li>
+              <li><code>read_file</code> por rangos.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Aprobación por política <span class="tag tag-soon">Próximamente</span></h3>
+            <p>Las operaciones de bajo riesgo dentro de carpetas permitidas se ejecutan directamente y quedan auditadas; las destructivas siguen pidiendo aprobación firmada.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seguridad -->
+    <section id="seguridad" aria-labelledby="seguridad-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Seguridad</span>
+          <h2 id="seguridad-title">Seguridad que puedes demostrar, no solo prometer</h2>
+          <p class="lead">Cada garantía de esta lista tiene una prueba asociada en el repositorio del producto.</p>
+        </div>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>Aprobaciones firmadas</h3>
+            <p>Las escrituras y los comandos de terminal requieren una aprobación Ed25519 ligada al identificador de la petición, su resumen canónico, la política, la capacidad requerida, la caducidad y un nonce. No existe un atajo <code>approved=true</code>.</p>
+          </div>
+          <div class="card">
+            <h3>Sin repeticiones</h3>
+            <p>Cada aprobación se consume una sola vez y ese consumo queda persistido. Reenviar la misma aprobación se rechaza como <code>approval_replayed</code>.</p>
+          </div>
+          <div class="card">
+            <h3>Auditoría a prueba de manipulación</h3>
+            <p>Registro en SQLite con espejo JSONL encadenado por hash: autorizaciones, aprobaciones verificadas y consumidas, fallos y ejecuciones.</p>
+          </div>
+          <div class="card">
+            <h3>Sin puertos de entrada</h3>
+            <p>El agente se conecta hacia fuera por gRPC con mTLS privado, con WSS como respaldo. Nunca abre un puerto público para recuperar la conexión.</p>
+          </div>
+          <div class="card">
+            <h3>Carpetas raíz y escapes</h3>
+            <p>Solo se trabaja dentro de las carpetas que autorizas. Se rechazan <code>..</code> y los puntos de reanálisis de Windows (junctions y enlaces simbólicos) en la ruta.</p>
+          </div>
+          <div class="card">
+            <h3>Aislamiento entre equipos <span class="tag tag-soon">En desarrollo</span></h3>
+            <p>Cada dispositivo, sesión, aprobación y evento de auditoría pertenece a una organización, y la organización sale de la identidad autenticada, no de la petición. Probado en local; aún no desplegado.</p>
+          </div>
+        </div>
+        <p class="note">La política de la aplicación es una barrera, no un sandbox del sistema operativo. No afirmamos contención a nivel de SO.</p>
+      </div>
+    </section>
+
+    <!-- Comparativa -->
+    <section class="alt" id="comparativa" aria-labelledby="comparativa-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Comparativa</span>
+          <h2 id="comparativa-title">Vör Commander frente a Desktop Commander</h2>
+          <p class="lead">Desktop Commander es una buena herramienta y la referencia en este espacio. Esta es una comparación honesta, con solo lo que podemos respaldar.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <caption>Comparación de funciones. «—» significa que no hacemos afirmaciones sobre ese punto.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Función</th>
+                <th scope="col">Vör Commander</th>
+                <th scope="col">Desktop Commander</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">MCP local</th>
+                <td>Sí, todo el código bajo licencia MPL-2.0</td>
+                <td class="yes">Sí, código abierto</td>
+              </tr>
+              <tr>
+                <th scope="row">MCP remoto</th>
+                <td class="yes">Sí</td>
+                <td class="yes">Sí</td>
+              </tr>
+              <tr>
+                <th scope="row">Aprobación firmada de escrituras y comandos</th>
+                <td class="yes">Sí, Ed25519 y de un solo uso</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <th scope="row">Auditoría encadenada por hash</th>
+                <td class="yes">Sí</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <th scope="row">Sin puertos de entrada en tu PC</th>
+                <td class="yes">Sí, túnel mTLS privado saliente</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <th scope="row">Prompts incluidos</th>
+                <td>—</td>
+                <td class="yes">Más de 60</td>
+              </tr>
+              <tr>
+                <th scope="row">Plan gratuito</th>
+                <td>Piloto privado</td>
+                <td>Free: 10.000 llamadas a herramientas al mes</td>
+              </tr>
+              <tr>
+                <th scope="row">Plan de pago</th>
+                <td>Sin precio público todavía</td>
+                <td>Pro: 20 USD al mes</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-note">Datos de Desktop Commander según su web pública (desktopcommander.app). Consulta allí sus condiciones actuales.</p>
+      </div>
+    </section>
+
+    <!-- Instalación -->
+    <section id="instalacion" aria-labelledby="instalacion-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Instalación <span class="tag tag-soon">Piloto</span></span>
+          <h2 id="instalacion-title">Instalación local del piloto</h2>
+          <p class="lead">Un paquete ZIP por usuario, sin servicio de Windows, sin permisos de administrador y sin tocar el firewall. El gateway local escucha solo en loopback.</p>
+        </div>
+        <div class="callout" role="note">
+          <p><strong>Esto describe el instalador del piloto.</strong> Todavía no es una versión pública: los pasos pueden cambiar y el paquete se entrega a los participantes.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <h3>Verifica el paquete</h3>
+            <p>Compara el ZIP con su fichero <code>.sha256</code>:</p>
+            <pre><code>Get-FileHash -Algorithm SHA256 .\vor-pilot.zip</code></pre>
+          </li>
+          <li>
+            <h3>Extrae e instala con tus carpetas</h3>
+            <p>Indica las carpetas a las que tendrá acceso. Una unidad completa se rechaza; si no indicas ninguna, se usa tu carpeta Documentos.</p>
+            <pre><code>.\scripts\installer\install-vor-pilot.ps1 -AllowedRoot 'D:\Proyectos\MiProyecto'</code></pre>
+          </li>
+          <li>
+            <h3>El instalador prepara tu identidad</h3>
+            <p>Crea la CA local, los certificados y las credenciales protegidas con DPAPI sin que copies claves. Arranca el gateway y el agente, comprueba su salud y llama a <code>commander_status</code>.</p>
+          </li>
+          <li>
+            <h3>Arranque al iniciar sesión</h3>
+            <p>Registra una tarea programada por usuario con privilegios limitados. Usa <code>-SkipStartupTask</code> si solo la quieres para esta sesión.</p>
+          </li>
+          <li>
+            <h3>Conecta tu asistente</h3>
+            <p>Añade la entrada <code>vor-commander</code> a Cursor y VS Code, con copia de seguridad del JSON anterior. Claude Desktop requiere el adaptador stdio local <span class="tag tag-soon">Próximamente</span>.</p>
+          </li>
+          <li>
+            <h3>Desinstala sin restos</h3>
+            <p>Para solo los procesos de esta instalación, quita la tarea y las entradas de clientes, y conserva la auditoría salvo que pidas <code>-RemoveData</code>.</p>
+            <pre><code>.\scripts\installer\uninstall-vor-pilot.ps1</code></pre>
+          </li>
+        </ol>
+        <p class="note">Con la política por defecto del paquete, las lecturas dentro de tus carpetas son automáticas y las escrituras y comandos de terminal piden aprobación. Las operaciones destructivas o elevadas, el navegador, el control del escritorio, los puertos públicos, las compras y la extracción de secretos están denegados.</p>
+      </div>
+    </section>
+
+    <!-- Precio -->
+    <section class="alt" id="precio" aria-labelledby="precio-title">
+      <div class="wrap pricing">
+        <span class="eyebrow">Precio</span>
+        <h2 id="precio-title">Piloto privado</h2>
+        <p class="lead lead-center">Aún no publicamos precios. Estamos trabajando con un grupo reducido de usuarios de Windows para cerrar el producto con ellos.</p>
+        <div class="card">
+          <h3>Qué incluye el piloto</h3>
+          <ul>
+            <li>Instalación local del agente en tu PC con Windows.</li>
+            <li>Acceso a las herramientas disponibles hoy y a las del piloto según se publiquen.</li>
+            <li>Contacto directo con el equipo para dar tu opinión.</li>
+          </ul>
+          <a class="btn btn-primary" href="mailto:contact@brierstudios.com?subject=Piloto%20V%C3%B6r%20Commander">Solicitar acceso por correo</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" aria-labelledby="faq-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Preguntas frecuentes</span>
+          <h2 id="faq-title">FAQ</h2>
+        </div>
+        <div class="faq">
+          <details>
+            <summary>¿En qué sistemas funciona?</summary>
+            <div><p>El agente está escrito en Rust y el piloto es para Windows. La aprobación interactiva del propietario hoy solo existe en Windows.</p></div>
+          </details>
+          <details>
+            <summary>¿La IA puede escribir o ejecutar comandos sin que yo lo sepa?</summary>
+            <div><p>Hoy no: toda escritura y todo comando de terminal pasan por un paso de preparación y otro de confirmación con tu aprobación firmada. La aprobación por política, que dejará pasar operaciones de bajo riesgo dentro de tus carpetas y las auditará, llega con el piloto; las operaciones destructivas seguirán pidiendo tu firma.</p></div>
+          </details>
+          <details>
+            <summary>¿Tengo que abrir puertos o tocar el firewall?</summary>
+            <div><p>No. El agente se conecta hacia fuera por un túnel privado con mTLS, y el instalador local no cambia el firewall de Windows ni abre puertos públicos.</p></div>
+          </details>
+          <details>
+            <summary>¿Dónde se guardan mis claves?</summary>
+            <div><p>En tu perfil de Windows, protegidas con DPAPI. La clave con la que firmas aprobaciones no la tienen ni el gateway ni el agente: el agente solo conoce tu clave pública.</p></div>
+          </details>
+          <details>
+            <summary>¿Puede salir de las carpetas que autorizo?</summary>
+            <div><p>Las rutas se confinan a tus carpetas raíz. Se rechazan <code>..</code> y los junctions o enlaces simbólicos en la ruta, y el directorio de trabajo del terminal debe quedar dentro de una carpeta permitida.</p></div>
+          </details>
+          <details>
+            <summary>¿Qué asistentes puedo usar?</summary>
+            <div><p>Hoy, Claude como conector remoto (OAuth) con todas las herramientas: lectura, git, procesos, escritura aprobada y terminal. ChatGPT: conector de solo lectura (validado). El instalador del piloto enlaza Cursor y VS Code automáticamente; para Claude Desktop en local llegará un adaptador stdio <span class="tag tag-soon">Próximamente</span>.</p></div>
+          </details>
+          <details>
+            <summary>¿Es código abierto?</summary>
+            <div><p>Todo el código es abierto bajo MPL-2.0 y está en <a href="https://github.com/BrierAinz/vor-commander">GitHub</a>. El servicio alojado lo opera Brier Studios; la marca «Vör Commander» no está cubierta por la licencia del código.</p></div>
+          </details>
+          <details>
+            <summary>¿Cuánto cuesta?</summary>
+            <div><p>Durante el piloto privado no hay precio público. Escríbenos para participar.</p></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div>
+        <p><strong>Vör Commander</strong> · piloto privado para Windows.</p>
+        <p>Desktop Commander es una marca de sus respectivos titulares; se cita solo a efectos comparativos.</p>
+      </div>
+      <ul class="footer-links" aria-label="Pie de página">
+        <li><a href="#como-funciona">Cómo funciona</a></li>
+        <li><a href="#seguridad">Seguridad</a></li>
+        <li><a href="#comparativa">Comparativa</a></li>
+        <li><a href="#precio">Contacto</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

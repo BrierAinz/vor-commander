@@ -1,0 +1,1083 @@
+{
+  "version": 1,
+  "generated_by": "prompts/validate.mjs --write",
+  "categories": [
+    {
+      "id": "exploracion",
+      "title": "Exploración y comprensión de código",
+      "description": "Entender un proyecto leyendo sus archivos sin modificar nada.",
+      "count": 5
+    },
+    {
+      "id": "depuracion",
+      "title": "Depuración y diagnóstico",
+      "description": "Logs, procesos y estado de Git para encontrar la causa de un fallo.",
+      "count": 5
+    },
+    {
+      "id": "documentacion",
+      "title": "Documentación",
+      "description": "Redactar y mantener documentación a partir del código real.",
+      "count": 5
+    },
+    {
+      "id": "revision",
+      "title": "Revisión de cambios locales",
+      "description": "Revisar lo que hay sin commitear usando git_status y git_diff.",
+      "count": 5
+    },
+    {
+      "id": "edicion",
+      "title": "Edición segura",
+      "description": "Escrituras con el flujo prepare_write / commit_write y aprobación firmada.",
+      "count": 5
+    },
+    {
+      "id": "tests",
+      "title": "Tests y builds",
+      "description": "Ejecutar tests, compilaciones y linters con el terminal acotado y aprobado.",
+      "count": 5
+    },
+    {
+      "id": "windows",
+      "title": "Diagnóstico del equipo Windows",
+      "description": "Disco, procesos y servicios; primero lectura, después comandos aprobados.",
+      "count": 7
+    },
+    {
+      "id": "onboarding",
+      "title": "Incorporación a un repositorio nuevo",
+      "description": "Orientarse en un repositorio desconocido en la primera sesión.",
+      "count": 5
+    }
+  ],
+  "tools": [
+    {
+      "name": "commander_status",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Estado no sensible de la pasarela: dispositivos conectados autorizados y recommended_device_id."
+    },
+    {
+      "name": "read_file",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Lee un archivo autorizado; la salida va en base64. Los rangos (offset/length, line_start/line_count) llegan con PR #5."
+    },
+    {
+      "name": "list_directory",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Lista un directorio autorizado sin seguir enlaces ni junctions; depth hasta 16, max_entries hasta 10000."
+    },
+    {
+      "name": "search_files",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Busca rutas por glob bajo una raíz autorizada; max_results hasta 10000."
+    },
+    {
+      "name": "search_content",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Búsqueda literal o regex acotada; devuelve un objeto con matches y contadores de archivos omitidos, con 5 s de límite y líneas truncadas a 4 KiB."
+    },
+    {
+      "name": "file_info",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Metadatos sin contenido: tipo, tamaño, fechas y solo-lectura."
+    },
+    {
+      "name": "git_status",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "git status --porcelain=v2 --branch --untracked-files=all de un repositorio autorizado."
+    },
+    {
+      "name": "git_diff",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "git diff del árbol de trabajo frente al índice; no incluye lo ya preparado (staged) ni archivos sin seguimiento."
+    },
+    {
+      "name": "process_list",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Lista procesos con pid, parent_pid y executable_name; sin CPU ni memoria."
+    },
+    {
+      "name": "process_inspect",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Devuelve pid, parent_pid y executable_name de un PID concreto."
+    },
+    {
+      "name": "prepare_write",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Prepara una escritura de archivo completo (hasta 1 MiB); nunca escribe. Devuelve el desafío de aprobación."
+    },
+    {
+      "name": "commit_write",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Ejecuta la escritura preparada con la solicitud exacta y una ApprovalGrant firmada de un solo uso."
+    },
+    {
+      "name": "prepare_edit",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "pilot/edit-block",
+      "summary": "El dispositivo aplica hasta 20 reemplazos exactos y ordenados, conserva codificación/finales de línea y devuelve diff y desafío de filesystem.write."
+    },
+    {
+      "name": "prepare_terminal",
+      "risk": "exec",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Prepara un terminal.exec acotado (argv estructurado, cwd, timeout, presupuesto de salida); nunca arranca un proceso."
+    },
+    {
+      "name": "commit_terminal",
+      "risk": "exec",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Arranca el proceso preparado con una ApprovalGrant firmada de un solo uso y devuelve un session_id."
+    },
+    {
+      "name": "poll_terminal",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Consulta una sesión de terminal propia; el resultado final se entrega una sola vez."
+    },
+    {
+      "name": "cancel_terminal",
+      "risk": "exec",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Pide cancelar una sesión de terminal propia; nunca autoriza un proceso nuevo."
+    }
+  ],
+  "prompts": [
+    {
+      "id": "dependencias-del-proyecto",
+      "title": "Inventario de dependencias",
+      "category": "exploracion",
+      "tools_used": [
+        "search_files",
+        "file_info",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "exploracion/dependencias-del-proyecto.md",
+      "summary": "Encuentra todos los manifiestos de dependencias del proyecto y resume qué se usa, con qué versión y dónde hay riesgos evidentes, como versiones sin fijar o incoherentes entre módulos.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nHaz un inventario de las dependencias de <RUTA_DEL_PROYECTO>.\n\n1. Con search_files localiza los manifiestos: package.json, Cargo.toml, pyproject.toml, requirements*.txt, go.mod, *.csproj, pom.xml, build.gradle*. Descarta las rutas dentro de node_modules, target, .venv y carpetas similares.\n2. Lee cada manifiesto con read_file (base64). De los archivos de bloqueo (package-lock.json, Cargo.lock, poetry.lock...) mira solo si existen y su tamaño con file_info; no los leas enteros.\n3. Dame una tabla por manifiesto con: dependencia, versión declarada, si es de desarrollo o de producción, y una nota cuando la versión esté sin fijar, esté repetida entre manifiestos con versiones distintas o falte el archivo de bloqueo.\n\nSolo lectura. No consultes registros de paquetes ni internet: trabaja con lo que hay en disco y marca como \"a verificar\" cualquier opinión que dependa de información externa."
+    },
+    {
+      "id": "explicar-archivo",
+      "title": "Explícame este archivo",
+      "category": "exploracion",
+      "tools_used": [
+        "file_info",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "exploracion/explicar-archivo.md",
+      "summary": "Lee un archivo concreto, por tramos si es grande, y lo explica: propósito, API, dependencias y zonas delicadas con referencias de línea.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_ARCHIVO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nExplícame el archivo <RUTA_DEL_ARCHIVO>.\n\n1. Llama primero a file_info para conocer su tamaño.\n2. Si ocupa menos de 300 KB, léelo entero con read_file. Si es mayor, léelo por tramos de 400 líneas con line_start y line_count y ve resumiendo tramo a tramo. read_file devuelve base64.\n3. Explícame:\n   - su responsabilidad en una frase;\n   - los tipos y funciones públicos y qué hace cada uno;\n   - de qué depende y quién parece depender de él (por los imports);\n   - las partes difíciles o frágiles, citando número de línea.\n\nNo propongas cambios todavía, solo quiero entenderlo. No modifiques nada."
+    },
+    {
+      "id": "localizar-simbolo",
+      "title": "Dónde se define y dónde se usa un símbolo",
+      "category": "exploracion",
+      "tools_used": [
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "exploracion/localizar-simbolo.md",
+      "summary": "Encuentra la definición de una función, tipo o constante y la lista de sus usos, con el contexto justo para entender cada uno sin leer archivos enteros.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "NOMBRE_DEL_SIMBOLO",
+        "RUTA_DEL_PROYECTO",
+        "GLOB_DE_ARCHIVOS"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nBusca el símbolo <NOMBRE_DEL_SIMBOLO> en <RUTA_DEL_PROYECTO>.\n\n1. Llama a search_content con regex false, query igual al símbolo y file_glob <GLOB_DE_ARCHIVOS> (por ejemplo **/*.rs). Pon max_matches 300 y usa el campo matches del objeto devuelto; revisa también sus contadores skipped_binary_files y skipped_size_limit_files.\n2. Separa la definición de los usos. Si hay varias definiciones candidatas, dilo.\n3. Para la definición y para los tres usos más representativos, lee el contexto con read_file usando line_start y line_count (unas 40 líneas alrededor de la coincidencia). La salida viene en base64.\n4. Devuélveme: dónde se define (archivo:línea), su firma, quién lo usa agrupado por módulo, y cualquier uso que te parezca sospechoso.\n\nSolo lectura. Si la búsqueda se corta por el límite de coincidencias o de tiempo, dilo y no presentes el resultado como completo."
+    },
+    {
+      "id": "mapa-del-proyecto",
+      "title": "Mapa de un proyecto en cinco minutos",
+      "category": "exploracion",
+      "tools_used": [
+        "list_directory",
+        "file_info",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "exploracion/mapa-del-proyecto.md",
+      "summary": "Recorre dos niveles del árbol, lee los archivos que definen el proyecto y devuelve un mapa de carpetas, tecnología y puntos de entrada. Es el primer prompt que conviene usar en un repositorio desconocido.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero un mapa del proyecto que está en <RUTA_DEL_PROYECTO>.\n\n1. Llama a list_directory sobre esa ruta con depth 2 y max_entries 500. Si el resultado llega al tope, dilo y vuelve a pedir solo las carpetas que parezcan relevantes.\n2. Identifica los archivos que definen el proyecto (manifiestos de paquetes, archivos de build, README, configuración de CI). Usa file_info para ver su tamaño antes de leerlos y lee con read_file solo los que pesen menos de 200 KB. read_file devuelve base64: decodifícalo antes de citarlo.\n3. Entrégame:\n   - una tabla con las carpetas principales y para qué sirve cada una;\n   - el lenguaje, el sistema de build y los puntos de entrada;\n   - tres archivos que debería leer primero y por qué.\n\nNo modifiques nada. Si una ruta está fuera de las carpetas permitidas o la llamada falla por autorización, detente y dímelo; no pruebes rutas alternativas para esquivarlo."
+    },
+    {
+      "id": "seguir-una-funcionalidad",
+      "title": "Seguir una funcionalidad de punta a punta",
+      "category": "exploracion",
+      "tools_used": [
+        "search_files",
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "exploracion/seguir-una-funcionalidad.md",
+      "summary": "Reconstruye el recorrido de una funcionalidad a través del código y lo presenta como una secuencia de pasos verificables con referencias a archivo y línea.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "FUNCIONALIDAD",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero entender cómo funciona \"<FUNCIONALIDAD>\" en <RUTA_DEL_PROYECTO>, desde la entrada (ruta HTTP, comando, evento o botón) hasta donde se guarda o se responde.\n\n1. Localiza el punto de entrada con search_content (regex false primero; usa regex true solo si hace falta). Si no sabes dónde buscar, usa search_files con patrones como **/*route* o **/*handler*.\n2. Sigue la cadena de llamadas leyendo con read_file solo los tramos necesarios (line_start y line_count). Decodifica el base64.\n3. Entrégame la secuencia numerada de pasos con archivo:línea en cada uno, los datos que viajan entre pasos y los puntos donde puede fallar (validaciones, errores, llamadas externas).\n\nSolo lectura. Si pierdes el hilo en algún paso (por ejemplo, una llamada dinámica que no puedes resolver leyendo), dilo en lugar de suponer."
+    },
+    {
+      "id": "analizar-log",
+      "title": "Leer el final de un log y encontrar el primer error",
+      "category": "depuracion",
+      "tools_used": [
+        "file_info",
+        "read_file",
+        "search_content"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "depuracion/analizar-log.md",
+      "summary": "Localiza el final de un log sin leerlo entero, encuentra el primer error significativo y reconstruye qué pasó antes, con una hipótesis de causa respaldada por líneas concretas.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_LOG",
+        "PATRON_DE_ERROR"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nAnaliza el log <RUTA_DEL_LOG>.\n\n1. Llama a file_info para saber su tamaño y su fecha de modificación.\n2. Lee los últimos 200 KB con read_file usando offset = tamaño − 204800 (o 0 si es menor) y length 204800. Decodifica el base64; la primera línea puede salir cortada.\n3. Busca en ese tramo errores, excepciones, timeouts y reinicios. Si necesitas ver cuándo empezó el problema, usa search_content con regex true, query <PATRON_DE_ERROR> (por ejemplo \"ERROR|panic|Exception\") y file_glob con el nombre del log, y lee con line_start y line_count el contexto de la primera aparición.\n4. Devuélveme: el primer error relevante con su marca de tiempo, la secuencia de eventos que lleva a él, cuántas veces se repite y una hipótesis de causa con la evidencia que la apoya.\n\nSolo lectura. Si el log contiene lo que parezcan contraseñas, tokens o datos personales, no los copies en tu respuesta: descríbelos."
+    },
+    {
+      "id": "configuracion-efectiva",
+      "title": "Qué configuración está usando realmente",
+      "category": "depuracion",
+      "tools_used": [
+        "search_files",
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "depuracion/configuracion-efectiva.md",
+      "summary": "Reconstruye de dónde sale el valor de una opción de configuración y en qué orden se aplican las fuentes, para explicar por qué el programa no se comporta como se esperaba.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO",
+        "NOMBRE_DE_LA_OPCION"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nSospecho que <RUTA_DEL_PROYECTO> no está usando el valor que creo para la opción \"<NOMBRE_DE_LA_OPCION>\".\n\n1. Con search_files localiza todos los archivos de configuración candidatos (**/*.env*, **/*.toml, **/*.json, **/*.yaml, **/*.yml, **/*.ini, **/*.config).\n2. Con search_content (regex false) busca la opción en esos archivos y en el código, para ver dónde se lee y qué valor por defecto tiene.\n3. Lee con read_file los tramos relevantes (base64) y reconstruye el orden de precedencia: valor por defecto en código, archivos, variables de entorno, argumentos.\n4. Dime qué valor gana según lo que hay en disco, qué no puedes saber sin ver el entorno del proceso, y dónde está la discrepancia más probable.\n\nSolo lectura. Si encuentras secretos (claves, contraseñas, cadenas de conexión), no los copies: indica solo el archivo y la clave."
+    },
+    {
+      "id": "estado-git-inesperado",
+      "title": "Qué ha pasado en este repositorio",
+      "category": "depuracion",
+      "tools_used": [
+        "git_status",
+        "git_diff",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "depuracion/estado-git-inesperado.md",
+      "summary": "Interpreta la salida exacta de `git status` y `git diff` para explicar el estado del repositorio (rama, cambios, conflictos, archivos perdidos) y propone pasos de recuperación marcando los peligrosos.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nEl repositorio <RUTA_DEL_REPO> se comporta de forma rara (compila distinto, faltan cambios, o Git dice cosas que no espero). Diagnostica su estado.\n\n1. Llama a git_status. La salida es porcelain v2 con --branch: interpreta la rama, el upstream, el adelanto/retraso (ab), y clasifica cada entrada en modificada, preparada (staged), sin seguimiento, renombrada o en conflicto (líneas \"u\").\n2. Llama a git_diff para ver los cambios del árbol de trabajo que aún no están en el índice.\n3. Si hay conflictos o archivos sin seguimiento que parezcan relevantes, léelos con read_file (base64) para ver los marcadores de conflicto o su contenido.\n4. Explícame en lenguaje llano en qué estado está el repositorio, qué parece haber pasado y qué pasos concretos de Git me recomiendas, advirtiendo cuáles serían destructivos.\n\nSolo lectura: no ejecutes ningún comando de Git que cambie el estado. Los pasos que recomiendes los ejecutaré yo."
+    },
+    {
+      "id": "proceso-que-no-responde",
+      "title": "¿Está vivo mi proceso y quién lo lanzó?",
+      "category": "depuracion",
+      "tools_used": [
+        "process_list",
+        "process_inspect"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "depuracion/proceso-que-no-responde.md",
+      "summary": "Comprueba si un programa sigue ejecutándose, cuántas copias hay y qué proceso lanzó cada una, para distinguir un bloqueo real de instancias duplicadas o huérfanas.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "NOMBRE_DEL_EJECUTABLE"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nCreo que <NOMBRE_DEL_EJECUTABLE> (por ejemplo node.exe o python.exe) se ha quedado colgado o duplicado.\n\n1. Llama a process_list y filtra las entradas cuyo executable_name coincida, sin distinguir mayúsculas.\n2. Para cada PID encontrado, sube por la cadena de padres con process_inspect (parent_pid) hasta llegar a un proceso del sistema o a uno que ya no exista.\n3. Dime cuántas instancias hay, el árbol padre → hijo de cada una y si alguna parece huérfana (su padre ya no existe) o duplicada respecto a lo que cabría esperar.\n\nSolo lectura: no intentes terminar ningún proceso ni sugieras hacerlo por otra vía. Si quiero pararlo, lo decidiré yo."
+    },
+    {
+      "id": "rastrear-mensaje-de-error",
+      "title": "De un mensaje de error al código que lo emite",
+      "category": "depuracion",
+      "tools_used": [
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "depuracion/rastrear-mensaje-de-error.md",
+      "summary": "Convierte un mensaje de error visto en pantalla o en un log en la línea de código que lo genera y en la condición exacta que lo dispara.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "MENSAJE_DE_ERROR",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nMe aparece este error: \"<MENSAJE_DE_ERROR>\". Encuentra en <RUTA_DEL_PROYECTO> qué código lo produce.\n\n1. Quita del mensaje las partes variables (rutas, números, identificadores) y busca el texto fijo que quede con search_content, regex false. Si no aparece, prueba con fragmentos más cortos o con regex true.\n2. Por cada coincidencia, lee unas 60 líneas de contexto con read_file (line_start y line_count; la salida viene en base64).\n3. Explica qué condición dispara el error, qué valores tienen que darse para llegar ahí y qué comprobarías primero para confirmarlo. Si hay varios sitios que emiten el mismo mensaje, dime cómo distinguir cuál ha sido.\n\nSolo lectura. No propongas el arreglo hasta que la causa esté identificada."
+    },
+    {
+      "id": "borrador-de-readme",
+      "title": "Borrador de README a partir del código",
+      "category": "documentacion",
+      "tools_used": [
+        "list_directory",
+        "search_files",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "documentacion/borrador-de-readme.md",
+      "summary": "Genera un README fiel al código: cada sección está respaldada por un archivo concreto y lo que no se pudo comprobar queda marcado para revisión.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nEscribe un borrador de README para <RUTA_DEL_PROYECTO> basado solo en lo que hay en disco.\n\n1. Recorre la estructura con list_directory (depth 2) y localiza con search_files los manifiestos, scripts de build, archivos de CI y ejemplos de configuración.\n2. Lee con read_file (base64) lo imprescindible para saber: qué hace el proyecto, cómo se instala, cómo se ejecuta, cómo se prueban los tests y qué configuración necesita.\n3. Redacta el README en Markdown con las secciones: descripción, requisitos, instalación, uso, configuración, tests y estructura del proyecto.\n4. Marca con [VERIFICAR] cada afirmación que no hayas podido confirmar leyendo un archivo, e indica al final qué archivo respalda cada sección.\n\nEntrégame el README como texto en la respuesta; no lo escribas en disco. Si existe un README, compáralo con el tuyo y señala lo que está desactualizado."
+    },
+    {
+      "id": "changelog-desde-cambios",
+      "title": "Entrada de CHANGELOG a partir de los cambios locales",
+      "category": "documentacion",
+      "tools_used": [
+        "git_status",
+        "git_diff"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "documentacion/changelog-desde-cambios.md",
+      "summary": "Convierte el diff local en una entrada de CHANGELOG orientada a usuarios y avisa de los cambios que no pudo ver.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nRedacta la entrada de CHANGELOG para los cambios pendientes en <RUTA_DEL_REPO>.\n\n1. Llama a git_status para ver qué archivos cambian, incluidos los nuevos sin seguimiento y los ya preparados (staged).\n2. Llama a git_diff para leer los cambios no preparados.\n3. Redacta la entrada con el formato Keep a Changelog (Añadido, Cambiado, Corregido, Eliminado, Seguridad), escrita para usuarios del proyecto y no para quien lo programa.\n4. Si hay archivos en git_status cuyo diff no puedes ver (staged o sin seguimiento), enuméralos y dime que la entrada puede estar incompleta por ellos.\n\nSolo lectura: entrégame el texto en la respuesta, no lo escribas en disco."
+    },
+    {
+      "id": "docs-desactualizadas",
+      "title": "Detectar documentación desactualizada",
+      "category": "documentacion",
+      "tools_used": [
+        "search_files",
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "documentacion/docs-desactualizadas.md",
+      "summary": "Cruza lo que dice la documentación con lo que hay en el código y devuelve una tabla de afirmaciones confirmadas, contradichas o sin respaldo.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nComprueba si la documentación de <RUTA_DEL_PROYECTO> sigue siendo cierta.\n\n1. Localiza la documentación con search_files (**/*.md, docs/**) y léela con read_file (base64). Empieza por README y guías de instalación.\n2. Extrae las afirmaciones comprobables: nombres de comandos, flags, rutas de archivos, variables de entorno, nombres de funciones y valores por defecto.\n3. Comprueba cada una con search_content (regex false) contra el código y los scripts.\n4. Dame una tabla: afirmación, archivo de documentación y línea, estado (confirmada, contradicha, no encontrada) y la evidencia en el código.\n\nSolo lectura. No corrijas nada todavía; quiero la lista para decidir."
+    },
+    {
+      "id": "documentar-api-publica",
+      "title": "Referencia de la API pública de un módulo",
+      "category": "documentacion",
+      "tools_used": [
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "documentacion/documentar-api-publica.md",
+      "summary": "Extrae las declaraciones públicas de un módulo y produce una referencia en Markdown, además de una lista de lo que falta documentar.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_MODULO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nGenera la referencia de la API pública del módulo <RUTA_DEL_MODULO>.\n\n1. Con search_content (regex true) localiza las declaraciones públicas según el lenguaje: por ejemplo \"^\\s*pub (fn|struct|enum|trait)\" en Rust, \"^export \" en TypeScript o \"^def [a-z]\" en Python. Ajusta el patrón a lo que veas.\n2. Lee cada declaración con su comentario de documentación usando read_file con line_start y line_count (base64).\n3. Para cada elemento escribe: firma, descripción de una o dos frases, parámetros, valor de retorno, errores o excepciones y un ejemplo mínimo de uso si el código lo deja claro.\n4. Señala aparte los elementos públicos sin documentación y los que parecen públicos por accidente.\n\nEntrégalo como Markdown en la respuesta. Solo lectura. No inventes comportamiento: si algo no se deduce del código, escríbelo como pregunta abierta."
+    },
+    {
+      "id": "guardar-documento-con-aprobacion",
+      "title": "Guardar un documento con aprobación",
+      "category": "documentacion",
+      "tools_used": [
+        "file_info",
+        "read_file",
+        "prepare_write",
+        "commit_write"
+      ],
+      "requires_approval": true,
+      "risk": "write",
+      "path": "documentacion/guardar-documento-con-aprobacion.md",
+      "summary": "Escribe en disco un documento redactado en la conversación siguiendo el flujo de dos pasos de Vör Commander: preparar la escritura, que el operador la apruebe con su firma y confirmarla con esa aprobación exacta.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_DOCUMENTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero guardar en <RUTA_DEL_DOCUMENTO> el documento que hemos redactado en esta conversación.\n\n1. Comprueba con file_info si el archivo existe.\n   - Si no existe, usarás expected_target_sha256 = \"absent\".\n   - Si existe, léelo entero con read_file y usa como expected_target_sha256 el valor hexadecimal (64 caracteres, minúsculas) de decodificar digest_base64 de esa respuesta. Enséñame qué partes vas a sustituir.\n2. Codifica el texto final completo en UTF-8 y luego en base64, y llama a prepare_write con path, content_base64 y expected_target_sha256. prepare_write no escribe nada: devuelve un desafío de aprobación, un request_base64 y el content_sha256.\n3. Muéstrame el content_sha256, el tamaño y un resumen del contenido, y espera. Yo reviso y firmo la aprobación en el aprobador de Vör y te paso el approval_base64.\n4. Solo entonces llama a commit_write con el request_base64 exacto que devolvió prepare_write y mi approval_base64.\n\nReglas: nunca generes, adivines ni reutilices una aprobación; cada una sirve una sola vez. Si la aprobación se rechaza, caduca (la solicitud vive 3 minutos) o commit_write falla, no reintentes por otra vía: dime qué ha pasado y, si quiero, preparamos una solicitud nueva."
+    },
+    {
+      "id": "mensaje-de-commit",
+      "title": "Proponer el mensaje de commit",
+      "category": "revision",
+      "tools_used": [
+        "git_status",
+        "git_diff"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "revision/mensaje-de-commit.md",
+      "summary": "Lee los cambios pendientes y propone uno o varios mensajes de commit bien formados, sugiriendo cómo dividir cambios que mezclan temas.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nPropón el mensaje de commit para los cambios de <RUTA_DEL_REPO>.\n\n1. Llama a git_status y a git_diff.\n2. Si los cambios mezclan temas distintos, propón cómo dividirlos en varios commits y qué archivos van en cada uno.\n3. Para cada commit escribe un asunto de menos de 72 caracteres en imperativo y un cuerpo que explique el porqué, no el qué. Respeta la convención del repositorio si la ves en los archivos (por ejemplo Conventional Commits); si no puedes verla, pregúntame.\n\nSolo lectura: no ejecutes git add ni git commit, solo dame el texto."
+    },
+    {
+      "id": "revision-de-seguridad",
+      "title": "Revisión de seguridad del diff",
+      "category": "revision",
+      "tools_used": [
+        "git_diff",
+        "read_file",
+        "search_content"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "revision/revision-de-seguridad.md",
+      "summary": "Revisa los cambios locales con foco en seguridad, siguiendo el origen de los datos que llegan a operaciones sensibles, y describe cada hallazgo con un escenario de ataque concreto.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nHaz una revisión de seguridad de los cambios no commiteados de <RUTA_DEL_REPO>.\n\n1. Lee el diff con git_diff.\n2. Para cada cambio que toque entrada externa, autenticación, autorización, rutas de archivos, ejecución de procesos, serialización, SQL, criptografía o registro de logs, lee el contexto con read_file (base64) y sigue de dónde viene el dato con search_content.\n3. Busca en concreto: inyección (comandos, SQL, rutas), recorrido de directorios, comprobaciones de permisos ausentes o invertidas, secretos en código o en logs, errores que filtran detalles internos, criptografía casera y condiciones de carrera entre comprobar y usar.\n4. Por cada hallazgo: severidad, archivo:línea, escenario de ataque concreto en dos o tres frases y corrección propuesta. Si no encuentras nada, di qué revisaste para llegar a esa conclusión.\n\nSolo lectura. Si encuentras un secreto real, no lo repitas en la respuesta: indica solo dónde está."
+    },
+    {
+      "id": "revision-general-del-diff",
+      "title": "Revisión de código de los cambios locales",
+      "category": "revision",
+      "tools_used": [
+        "git_status",
+        "git_diff",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "revision/revision-general-del-diff.md",
+      "summary": "Hace una revisión de código de los cambios pendientes con hallazgos priorizados, referencias de línea y un veredicto final.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nRevisa como lo haría un revisor exigente los cambios sin commitear de <RUTA_DEL_REPO>.\n\n1. Llama a git_status para ver el alcance completo, y a git_diff para leer los cambios.\n2. Cuando un hunk no se entienda sin contexto, lee el archivo con read_file (base64), preferiblemente solo el tramo con line_start y line_count.\n3. Busca, por orden de importancia: errores de lógica, casos límite sin tratar, manejo de errores, concurrencia, regresiones de rendimiento, y después legibilidad y nombres.\n4. Entrégame los hallazgos como lista: severidad (bloqueante, importante, menor), archivo:línea, el problema, por qué importa y una propuesta concreta. Termina con un veredicto: listo, listo con cambios menores o necesita otra vuelta.\n\nSolo lectura. No apliques ninguna corrección. Si hay archivos en git_status que no aparecen en el diff (preparados o sin seguimiento), dilo: la revisión no los cubre salvo que los leas."
+    },
+    {
+      "id": "secretos-antes-de-commitear",
+      "title": "Comprobar que no se cuelan secretos antes del commit",
+      "category": "revision",
+      "tools_used": [
+        "git_status",
+        "git_diff",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "revision/secretos-antes-de-commitear.md",
+      "summary": "Actúa como última barrera antes de un commit: revisa archivos nuevos y cambios en busca de credenciales, sin repetir su valor en la respuesta.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nAntes de commitear en <RUTA_DEL_REPO>, comprueba que no se cuela ningún secreto.\n\n1. Llama a git_status. Fíjate especialmente en archivos nuevos sin seguimiento con nombres como .env, *.pem, *.key, *.pfx, id_rsa, credentials, secrets o config local.\n2. Revisa git_diff buscando claves de API, tokens, contraseñas, cadenas de conexión, claves privadas, cookies y direcciones internas.\n3. Lee con read_file los archivos nuevos sospechosos que no aparezcan en el diff.\n4. Dame una lista con archivo:línea y el tipo de secreto, sin reproducir nunca el valor; como mucho sus cuatro primeros caracteres. Indica también qué patrones convendría añadir a .gitignore.\n\nSolo lectura. No modifiques ni borres nada, y no me pidas que pegue ningún secreto en la conversación."
+    },
+    {
+      "id": "tests-que-faltan",
+      "title": "¿Tienen tests los cambios?",
+      "category": "revision",
+      "tools_used": [
+        "git_status",
+        "git_diff",
+        "search_files",
+        "search_content"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "revision/tests-que-faltan.md",
+      "summary": "Relaciona cada cambio con los tests que lo cubren y enumera los casos sin probar, para decidir qué añadir antes de integrar.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nComprueba si los cambios pendientes de <RUTA_DEL_REPO> están cubiertos por tests.\n\n1. Con git_status y git_diff identifica las funciones y ramas de código nuevas o modificadas.\n2. Con search_files localiza los archivos de test del proyecto (por ejemplo **/*test*, **/tests/**, **/*.spec.*) y con search_content busca en ellos los nombres de las funciones cambiadas.\n3. Para cada cambio relevante dime si hay test que lo ejerza, si el test existente sigue siendo válido tras el cambio y qué casos faltan (caso normal, límites, errores).\n4. Propón los tests que faltan como lista de nombres y descripción de una línea; no escribas su código salvo que te lo pida.\n\nSolo lectura: no ejecutes los tests ni escribas archivos."
+    },
+    {
+      "id": "cambiar-configuracion",
+      "title": "Cambiar un valor de configuración",
+      "category": "edicion",
+      "tools_used": [
+        "read_file",
+        "prepare_write",
+        "commit_write"
+      ],
+      "requires_approval": true,
+      "risk": "write",
+      "path": "edicion/cambiar-configuracion.md",
+      "summary": "Cambia una sola clave de un archivo de configuración respetando el formato original y confirmando la sintaxis, con el flujo de escritura aprobada.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_ARCHIVO_DE_CONFIGURACION",
+        "CLAVE",
+        "VALOR_NUEVO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nEn el archivo de configuración <RUTA_DEL_ARCHIVO_DE_CONFIGURACION>, cambia <CLAVE> de su valor actual a <VALOR_NUEVO>.\n\n1. Lee el archivo entero con read_file. Decodifica data y guarda el SHA-256 en hexadecimal que sale de decodificar digest_base64 como expected_target_sha256.\n2. Dime el valor actual de la clave, en qué línea está y si aparece más de una vez (secciones, perfiles, entornos). Si hay ambigüedad, pregúntame antes de seguir.\n3. Enséñame el antes y el después de esa línea. No reordenes claves, no cambies comentarios, indentación ni finales de línea, y comprueba que el resultado sigue siendo sintácticamente válido para su formato (JSON, TOML, YAML, INI).\n4. Con mi visto bueno, llama a prepare_write con el archivo completo en base64 y el expected_target_sha256. Devuelve un desafío de aprobación: muéstrame el content_sha256 y espera a que firme en el aprobador de Vör y te pase el approval_base64.\n5. Llama a commit_write con el request_base64 exacto y mi approval_base64.\n\nNunca generes ni reutilices aprobaciones. Si el archivo contiene secretos, no los repitas en la conversación. Recuérdame al final si el cambio necesita reiniciar algún servicio para aplicarse; no lo reinicies tú."
+    },
+    {
+      "id": "corregir-tras-diagnostico",
+      "title": "Aplicar la corrección de un fallo ya diagnosticado",
+      "category": "edicion",
+      "tools_used": [
+        "search_content",
+        "read_file",
+        "prepare_write",
+        "commit_write",
+        "git_diff"
+      ],
+      "requires_approval": true,
+      "risk": "write",
+      "path": "edicion/corregir-tras-diagnostico.md",
+      "summary": "Lleva una corrección desde el diagnóstico hasta el disco: encuentra todos los puntos afectados, propone el cambio mínimo, lo escribe con aprobación por archivo y verifica el resultado con `git_diff`.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "CAUSA_DEL_FALLO",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nYa sabemos la causa del fallo: <CAUSA_DEL_FALLO>. Aplica la corrección mínima en <RUTA_DEL_REPO>.\n\n1. Usa search_content para encontrar todos los sitios afectados por la misma causa, no solo el primero. Enséñame la lista.\n2. Por cada archivo a tocar, léelo entero con read_file y anota el SHA-256 en hexadecimal que resulta de decodificar digest_base64; será su expected_target_sha256.\n3. Enséñame un diff unificado por archivo con el cambio más pequeño que corrige la causa. Nada de refactors ni cambios de estilo añadidos.\n4. Cuando confirme, prepara una escritura por archivo con prepare_write (archivo completo en content_base64). Cada una devuelve un desafío de aprobación: dime el path y el content_sha256 de cada solicitud y espera a que firme cada aprobación en el aprobador de Vör y te pase su approval_base64.\n5. Llama a commit_write por cada archivo con su request_base64 exacto y su approval_base64 correspondiente.\n6. Al terminar, llama a git_diff y comprueba que el diff real coincide con el que te aprobé.\n\nNunca generes ni reutilices aprobaciones, y no mezcles la aprobación de un archivo con la solicitud de otro. Si alguna escritura falla, detente y dime en qué estado quedó cada archivo."
+    },
+    {
+      "id": "crear-archivo-nuevo",
+      "title": "Crear un archivo nuevo sin pisar nada",
+      "category": "edicion",
+      "tools_used": [
+        "file_info",
+        "prepare_write",
+        "commit_write"
+      ],
+      "requires_approval": true,
+      "risk": "write",
+      "path": "edicion/crear-archivo-nuevo.md",
+      "summary": "Crea un archivo nuevo con la garantía de no sobrescribir uno existente: el valor `absent` hace que el dispositivo rechace la escritura si la ruta ya está ocupada.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_ARCHIVO_NUEVO",
+        "PROPOSITO_DEL_ARCHIVO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nCrea el archivo <RUTA_DEL_ARCHIVO_NUEVO> con este propósito: <PROPOSITO_DEL_ARCHIVO>.\n\n1. Comprueba con file_info que la ruta no existe todavía. Si existe, detente y avísame: no la sobrescribas.\n2. Redacta el contenido y enséñamelo completo para que lo revise.\n3. Cuando lo apruebe en la conversación, codifícalo en UTF-8 y luego en base64 y llama a prepare_write con path, content_base64 y expected_target_sha256 = \"absent\". Así el dispositivo rechazará la escritura si entretanto alguien crea el archivo.\n4. prepare_write no escribe: devuelve un desafío de aprobación, request_base64 y content_sha256. Muéstrame el content_sha256 y espera a que firme la aprobación en el aprobador de Vör y te pase el approval_base64.\n5. Llama a commit_write con el request_base64 exacto y mi approval_base64.\n\nNunca generes, adivines ni reutilices una aprobación. Si se rechaza o caduca, no reintentes por otra vía; dime qué ha pasado."
+    },
+    {
+      "id": "edicion-puntual-aprobada",
+      "title": "Cambio puntual en un archivo con aprobación",
+      "category": "edicion",
+      "tools_used": [
+        "prepare_edit",
+        "commit_write"
+      ],
+      "requires_approval": true,
+      "risk": "write",
+      "path": "edicion/edicion-puntual-aprobada.md",
+      "summary": "Aplica un cambio pequeño y bien delimitado a un archivo existente con el flujo seguro de Vör Commander: diff revisado por el operador, escritura preparada, aprobación firmada y confirmación con protección contra cambios concurrentes.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_ARCHIVO",
+        "DESCRIPCION_DEL_CAMBIO"
+      ],
+      "requires_unmerged_tools": [
+        "prepare_edit"
+      ],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero este cambio en <RUTA_DEL_ARCHIVO>: <DESCRIPCION_DEL_CAMBIO>.\n\n1. Formula el cambio como uno o varios bloques exactos `{old_text, new_text, expected_occurrences}`. Usa 1 como expected_occurrences salvo que yo pida reemplazar varias apariciones conocidas.\n2. Llama a prepare_edit con path y edits. El dispositivo lee el archivo y aplica los bloques en orden; no envíes ni reconstruyas el archivo completo.\n3. Enséñame el diff_summary devuelto. Si el conteo no coincide, detente y usa el conteo real y la línea más cercana para corregir el bloque, sin relajar expected_occurrences.\n4. Dime el content_sha256 y espera. Yo reviso el desafío en el aprobador de Vör, lo firmo si estoy de acuerdo y te paso el approval_base64.\n5. Llama a commit_write con el request_base64 exacto y mi approval_base64, y enséñame el resultado.\n\nNunca generes, adivines ni reutilices una aprobación. Si la aprobación se rechaza o caduca, o el dispositivo rechaza la escritura porque el archivo cambió, no busques otra forma de escribir: vuelve a leer, enséñame el diff nuevo y preparamos otra solicitud."
+    },
+    {
+      "id": "verificar-una-escritura",
+      "title": "Verificar que una escritura quedó como se aprobó",
+      "category": "edicion",
+      "tools_used": [
+        "read_file",
+        "file_info",
+        "git_diff"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "edicion/verificar-una-escritura.md",
+      "summary": "Comprueba, después de una escritura aprobada, que el contenido en disco es bit a bit el que se firmó, comparando hashes, y muestra el diff resultante.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_ARCHIVO",
+        "SHA256_APROBADO",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nAcabo de aprobar una escritura en <RUTA_DEL_ARCHIVO> cuyo content_sha256 era <SHA256_APROBADO>. Comprueba que el disco contiene exactamente eso.\n\n1. Llama a file_info para ver tamaño y fecha de modificación.\n2. Lee el archivo entero con read_file y compara el SHA-256 en hexadecimal que sale de decodificar digest_base64 con <SHA256_APROBADO>.\n3. Si el archivo está en un repositorio (<RUTA_DEL_REPO>), llama a git_diff y enséñame los cambios de ese archivo.\n4. Dime claramente: coincide o no coincide. Si no coincide, explica qué diferencias ves, sin intentar corregirlas.\n\nSolo lectura: esta comprobación no escribe nada."
+    },
+    {
+      "id": "compilar-el-proyecto",
+      "title": "Compilar el proyecto",
+      "category": "tests",
+      "tools_used": [
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal",
+        "cancel_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "tests/compilar-el-proyecto.md",
+      "summary": "Lanza la compilación con el terminal acotado, tras aprobación, y ordena los errores por causa en lugar de volcar la salida completa.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO",
+        "COMANDO_DE_BUILD"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nCompila <RUTA_DEL_PROYECTO> con este comando: <COMANDO_DE_BUILD> (por ejemplo cargo build --locked, npm run build o dotnet build).\n\n1. Convierte el comando en argv, un argumento por elemento, y llama a prepare_terminal con cwd = <RUTA_DEL_PROYECTO>, timeout_ms 120000 y max_output_bytes 262144. No uses shell ni powershell -Command.\n2. prepare_terminal no arranca nada: devuelve un desafío de aprobación. Enséñame cwd y argv y espera a que firme la aprobación en el aprobador de Vör y te pase el approval_base64.\n3. Llama a commit_terminal con el request_base64 exacto y mi approval_base64. Consulta con poll_terminal hasta que termine; si te pido pararlo, usa cancel_terminal con el mismo session_id.\n4. Dime si compiló. Si hubo errores, agrúpalos por archivo, empieza por el primero (los siguientes suelen ser consecuencia) y explica la causa probable de cada grupo. Resume también los avisos importantes.\n\nNunca generes ni reutilices aprobaciones. Si la compilación se corta por tiempo o por tamaño de salida, dilo: no es un éxito ni un fallo del código."
+    },
+    {
+      "id": "diagnosticar-build-roto",
+      "title": "Diagnosticar un build o un test roto",
+      "category": "tests",
+      "tools_used": [
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal",
+        "read_file",
+        "search_content",
+        "git_diff"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "tests/diagnosticar-build-roto.md",
+      "summary": "Ejecuta una vez el comando que falla, sigue el primer error hasta el código y lo cruza con los cambios locales para dar una causa respaldada por evidencia.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "COMANDO_QUE_FALLA",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nEl comando <COMANDO_QUE_FALLA> falla en <RUTA_DEL_PROYECTO>. Encuentra la causa.\n\n1. Ejecútalo una vez para ver el error real: llama a prepare_terminal con cwd = <RUTA_DEL_PROYECTO>, el comando como argv, timeout_ms 120000 y max_output_bytes 262144. Devuelve un desafío de aprobación: enséñame el argv y espera a que firme en el aprobador de Vör y te pase el approval_base64. Después commit_terminal con el request_base64 exacto y mi approval_base64, y poll_terminal hasta el final.\n2. Toma el primer error de la salida y ve al código: read_file con line_start y line_count sobre el archivo y la línea que cita, y search_content para encontrar definiciones o usos relacionados.\n3. Llama a git_diff para ver si el fallo lo introduce algún cambio local.\n4. Explícame la causa con la evidencia (salida del comando, línea de código, hunk del diff) y propón la corrección. No la apliques: si la quiero, usaremos el flujo de escritura con aprobación.\n\nNunca generes ni reutilices aprobaciones, y no vuelvas a ejecutar el comando sin pedírmelo: cada ejecución necesita su propia aprobación."
+    },
+    {
+      "id": "ejecutar-la-suite",
+      "title": "Ejecutar la suite de tests",
+      "category": "tests",
+      "tools_used": [
+        "read_file",
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal",
+        "cancel_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "tests/ejecutar-la-suite.md",
+      "summary": "Detecta el comando de tests del proyecto, lo ejecuta en el terminal acotado de Vör Commander tras la aprobación del operador y resume el resultado sin dar por buena una salida vacía.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nEjecuta los tests de <RUTA_DEL_PROYECTO>.\n\n1. Averigua el comando de tests leyendo con read_file el manifiesto o la documentación (package.json, Cargo.toml, pyproject.toml, Makefile, README). Dime qué comando vas a usar y por qué.\n2. Llama a prepare_terminal con cwd = <RUTA_DEL_PROYECTO>, argv como lista de argumentos separados (por ejemplo [\"cargo\", \"test\", \"--locked\"] o [\"npm\", \"test\"]), timeout_ms 120000 y max_output_bytes 262144. No hay shell: nada de tuberías, redirecciones ni \"&&\", y no envuelvas el comando en powershell -Command ni cmd /c.\n3. prepare_terminal no ejecuta nada: devuelve un desafío de aprobación y un request_base64. Enséñame cwd, argv, timeout y presupuesto de salida, y espera a que firme la aprobación en el aprobador de Vör y te pase el approval_base64.\n4. Llama a commit_terminal con el request_base64 exacto y mi approval_base64. Guarda el session_id.\n5. Llama a poll_terminal con ese session_id hasta que la sesión termine; el resultado final se entrega una sola vez, así que consérvalo. Si algo se queda colgado y te lo pido, usa cancel_terminal.\n6. Resume: código de salida, tests pasados, fallidos e ignorados, y para cada fallo el nombre del test y el mensaje esencial.\n\nNunca generes ni reutilices aprobaciones. Una salida vacía o sin línea de resumen no es un aprobado: si no ves el recuento de tests, dilo."
+    },
+    {
+      "id": "ejecutar-un-test",
+      "title": "Ejecutar solo el test que falla",
+      "category": "tests",
+      "tools_used": [
+        "search_content",
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "tests/ejecutar-un-test.md",
+      "summary": "Ejecuta un único test en lugar de toda la suite, con un argv mínimo que el operador aprueba, y devuelve el detalle del fallo si lo hay.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "NOMBRE_DEL_TEST",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero ejecutar solo el test <NOMBRE_DEL_TEST> de <RUTA_DEL_PROYECTO>.\n\n1. Localiza el test con search_content (regex false) para saber en qué archivo, módulo o paquete está.\n2. Construye el argv más estrecho que ejecute solo ese test con el runner del proyecto (por ejemplo [\"cargo\", \"test\", \"-p\", \"mi_paquete\", \"modulo::nombre_del_test\", \"--\", \"--exact\"], [\"npx\", \"vitest\", \"run\", \"ruta\", \"-t\", \"nombre\"] o [\"pytest\", \"ruta::nombre\", \"-q\"]).\n3. Llama a prepare_terminal con cwd = <RUTA_DEL_PROYECTO>, ese argv, timeout_ms 60000 y max_output_bytes 131072. Devuelve un desafío de aprobación: enséñame el argv exacto y espera a que firme en el aprobador de Vör y te pase el approval_base64.\n4. Llama a commit_terminal con el request_base64 exacto y mi approval_base64, y después a poll_terminal con el session_id hasta que termine.\n5. Dime si pasó o falló. Si falló, cita la aserción, el valor esperado y el obtenido, y la línea del test.\n\nNunca generes ni reutilices aprobaciones. Si el runner dice que ejecutó 0 tests, el filtro no ha funcionado: dilo, no lo cuentes como aprobado."
+    },
+    {
+      "id": "linter-en-modo-comprobacion",
+      "title": "Linter y formato en modo comprobación",
+      "category": "tests",
+      "tools_used": [
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "tests/linter-en-modo-comprobacion.md",
+      "summary": "Ejecuta linters y comprobadores de formato en su modo de solo comprobación, con una aprobación por comando, y resume los problemas agrupados por regla.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_PROYECTO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nPasa el linter y el comprobador de formato de <RUTA_DEL_PROYECTO> sin modificar archivos.\n\n1. Elige la variante de solo comprobación de cada herramienta, nunca la que corrige: por ejemplo [\"cargo\", \"fmt\", \"--check\"], [\"cargo\", \"clippy\", \"--locked\", \"--\", \"-D\", \"warnings\"], [\"npx\", \"eslint\", \".\"], [\"npx\", \"prettier\", \"--check\", \".\"], [\"ruff\", \"check\", \".\"]. No uses --fix ni --write.\n2. Prepara cada comando por separado con prepare_terminal (cwd = <RUTA_DEL_PROYECTO>, timeout_ms 120000, max_output_bytes 262144). Cada uno devuelve un desafío de aprobación: enséñame los argv y espera a que firme cada aprobación en el aprobador de Vör y te pase el approval_base64 de cada una.\n3. Ejecuta cada uno con commit_terminal (request_base64 exacto y su approval_base64) y recoge el resultado con poll_terminal.\n4. Agrupa los problemas por regla y por archivo, di cuántos hay de cada tipo y cuáles son errores y cuáles avisos.\n\nNunca generes ni reutilices aprobaciones. Si quiero aplicar las correcciones automáticas, lo pediré aparte: eso modifica archivos."
+    },
+    {
+      "id": "carpetas-que-mas-ocupan",
+      "title": "Qué carpetas ocupan más espacio",
+      "category": "windows",
+      "tools_used": [
+        "list_directory",
+        "file_info"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "windows/carpetas-que-mas-ocupan.md",
+      "summary": "Recorre una carpeta permitida, agrega tamaños por subcarpeta y señala los archivos grandes y antiguos, distinguiendo lo que suele poder regenerarse de lo que no.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "CARPETA_PERMITIDA"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nMe estoy quedando sin espacio. Averigua qué ocupa más dentro de <CARPETA_PERMITIDA>.\n\n1. Llama a list_directory sobre esa carpeta con depth 3 y max_entries 10000. Cada entrada trae path, entry_type y size.\n2. Suma los tamaños de los archivos por carpeta de primer y segundo nivel y ordénalas de mayor a menor. Si el listado llegó al tope de entradas, dilo: las sumas serán un mínimo.\n3. Baja un nivel más, con otra llamada a list_directory, en las tres carpetas más grandes.\n4. Para los diez archivos más grandes, usa file_info para ver sus fechas de modificación y acceso.\n5. Dame: las carpetas que más ocupan, los archivos grandes que llevan meses sin tocarse, y qué tipo de contenido parece (cachés de build como target o node_modules, descargas, copias de seguridad, vídeos). Marca lo que suele poder regenerarse.\n\nSolo lectura. No borres ni muevas nada; la decisión de limpiar es mía."
+    },
+    {
+      "id": "consumo-de-memoria-y-cpu",
+      "title": "Qué está consumiendo memoria y CPU",
+      "category": "windows",
+      "tools_used": [
+        "process_list",
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "windows/consumo-de-memoria-y-cpu.md",
+      "summary": "Combina la lista de procesos de solo lectura con dos comandos de consulta de Windows, aprobados por el operador, para identificar qué programas consumen más memoria y cuánta CPU se está usando.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "CARPETA_PERMITIDA"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nEl equipo va lento. Averigua qué consume memoria y CPU.\n\n1. Empieza en solo lectura: llama a process_list y dime cuántos procesos hay y cuáles tienen más instancias. process_list no da consumo, así que para eso necesitamos comandos de Windows.\n2. Prepara dos comandos de solo consulta con prepare_terminal, con cwd = <CARPETA_PERMITIDA>, timeout_ms 30000 y max_output_bytes 262144:\n   - memoria por proceso: argv [\"tasklist\", \"/fo\", \"csv\", \"/nh\"]\n   - CPU total durante 5 segundos: argv [\"typeperf\", \"\\Processor(_Total)\\% Processor Time\", \"-sc\", \"5\"]\n   Cada uno devuelve un desafío de aprobación. Enséñame los argv y espera a que firme cada aprobación en el aprobador de Vör y te pase su approval_base64.\n3. Ejecuta cada uno con commit_terminal (request_base64 exacto y su approval_base64) y recoge el resultado con poll_terminal.\n4. Suma la memoria por nombre de ejecutable, dame los diez que más consumen y la media de CPU. Relaciónalo con lo que viste en process_list y dime qué parece estar causando la lentitud.\n\nNunca generes ni reutilices aprobaciones. No propongas terminar procesos desde aquí; si hay que cerrar algo, lo decidiré yo."
+    },
+    {
+      "id": "errores-recientes-del-sistema",
+      "title": "Errores recientes en el registro de eventos",
+      "category": "windows",
+      "tools_used": [
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal",
+        "cancel_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "windows/errores-recientes-del-sistema.md",
+      "summary": "Obtiene los eventos críticos y de error más recientes de un registro de Windows con una consulta aprobada y los agrupa por origen para encontrar patrones.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "REGISTRO",
+        "CARPETA_PERMITIDA"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero ver los errores recientes del registro de eventos <REGISTRO> (System o Application).\n\n1. Prepara con prepare_terminal la consulta argv [\"wevtutil\", \"qe\", \"<REGISTRO>\", \"/c:40\", \"/rd:true\", \"/f:text\", \"/q:*[System[(Level=1 or Level=2)]]\"], con cwd = <CARPETA_PERMITIDA>, timeout_ms 30000 y max_output_bytes 262144. Pide los 40 eventos críticos y de error más recientes.\n2. Devuelve un desafío de aprobación: enséñame el argv y espera a que firme en el aprobador de Vör y te pase el approval_base64.\n3. Llama a commit_terminal con el request_base64 exacto y mi approval_base64, y a poll_terminal hasta que termine. Si tarda más de lo esperado y te lo pido, usa cancel_terminal.\n4. Agrupa los eventos por origen (Provider) e Id, con recuento, primera y última aparición. Explica los tres grupos más relevantes: qué significan y qué revisaría a continuación.\n\nNunca generes ni reutilices aprobaciones. No prepares comandos que borren o exporten registros."
+    },
+    {
+      "id": "espacio-libre-en-disco",
+      "title": "Espacio libre en una unidad",
+      "category": "windows",
+      "tools_used": [
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "windows/espacio-libre-en-disco.md",
+      "summary": "Consulta el espacio total y libre de una unidad con un único comando de solo consulta, aprobado por el operador.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "LETRA_DE_UNIDAD",
+        "CARPETA_PERMITIDA"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nDime cuánto espacio libre queda en la unidad <LETRA_DE_UNIDAD> (solo la letra, por ejemplo D).\n\n1. Prepara con prepare_terminal el comando de consulta argv [\"fsutil\", \"volume\", \"diskfree\", \"<LETRA_DE_UNIDAD>:\"], con cwd = <CARPETA_PERMITIDA>, timeout_ms 15000 y max_output_bytes 16384.\n2. Devuelve un desafío de aprobación: enséñame el argv y espera a que firme en el aprobador de Vör y te pase el approval_base64.\n3. Llama a commit_terminal con el request_base64 exacto y mi approval_base64, y a poll_terminal con el session_id hasta que termine.\n4. Dame el total, lo libre y el porcentaje libre en GB legibles. Si queda menos de un 10 %, avísame y propón usar el prompt de carpetas que más ocupan para buscar qué liberar.\n\nNunca generes ni reutilices aprobaciones. Si fsutil falla por permisos, dímelo tal cual: el terminal no eleva privilegios y no quiero que lo intentes por otra vía."
+    },
+    {
+      "id": "estado-de-un-servicio",
+      "title": "Estado y configuración de un servicio de Windows",
+      "category": "windows",
+      "tools_used": [
+        "process_list",
+        "prepare_terminal",
+        "commit_terminal",
+        "poll_terminal"
+      ],
+      "requires_approval": true,
+      "risk": "exec",
+      "path": "windows/estado-de-un-servicio.md",
+      "summary": "Combina la lista de procesos con dos consultas de `sc.exe` para explicar si un servicio está vivo, con qué configuración y, si falló, con qué código.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "NOMBRE_DEL_SERVICIO",
+        "EJECUTABLE_DEL_SERVICIO",
+        "CARPETA_PERMITIDA"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero saber si el servicio <NOMBRE_DEL_SERVICIO> está funcionando y cómo está configurado.\n\n1. Primero en solo lectura: llama a process_list y dime si ves el ejecutable que normalmente usa ese servicio (<EJECUTABLE_DEL_SERVICIO>, si lo conozco) y cuántas instancias tiene.\n2. Después prepara dos consultas con prepare_terminal, con cwd = <CARPETA_PERMITIDA>, timeout_ms 15000 y max_output_bytes 32768:\n   - estado: argv [\"sc.exe\", \"queryex\", \"<NOMBRE_DEL_SERVICIO>\"]\n   - configuración: argv [\"sc.exe\", \"qc\", \"<NOMBRE_DEL_SERVICIO>\"]\n   Cada una devuelve un desafío de aprobación. Enséñame los argv y espera a que firme cada aprobación en el aprobador de Vör y te pase su approval_base64.\n3. Ejecuta cada una con commit_terminal (request_base64 exacto y su approval_base64) y recoge el resultado con poll_terminal.\n4. Explícame: estado (en ejecución, detenido, pendiente), PID y si coincide con lo que viste en process_list, tipo de inicio, cuenta con la que se ejecuta, dependencias, y el código de salida si está detenido con error.\n\nSolo consultas: no prepares comandos que arranquen, paren, reconfiguren o eliminen el servicio. Si hace falta, te diré yo qué hacer. Nunca generes ni reutilices aprobaciones."
+    },
+    {
+      "id": "primer-vistazo-al-equipo",
+      "title": "Primer vistazo al equipo, sin tocar nada",
+      "category": "windows",
+      "tools_used": [
+        "commander_status",
+        "process_list"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "windows/primer-vistazo-al-equipo.md",
+      "summary": "Confirma que la conexión con el equipo funciona y saca una fotografía rápida de lo que se está ejecutando, sin ningún efecto sobre el sistema. Es el punto de partida de los demás prompts de esta categoría.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander. Antes de nada llama a commander_status y dime qué dispositivos conectados ves, cuál es el recommended_device_id y qué dice operator_hint. Si no hay ninguno conectado, detente y dime cómo reconectarlo según ese mensaje.\n\nDespués, en el dispositivo <DEVICE_ID> (o el recomendado si no te doy otro) y el workspace <WORKSPACE_ID>, pasando device_id y workspace_id en cada llamada:\n\n1. Llama a process_list.\n2. Resume el estado del equipo: número total de procesos, los ejecutables con más instancias, y qué familias de software se están ejecutando (navegadores, IDE, bases de datos, antivirus, herramientas de sincronización, agentes de Vör).\n3. Señala lo que te parezca anómalo, por ejemplo decenas de instancias del mismo ejecutable o nombres que imitan procesos del sistema.\n\nSolo lectura. No propongas terminar procesos; esto es solo una fotografía para decidir por dónde seguir."
+    },
+    {
+      "id": "procesos-desconocidos",
+      "title": "Procesos desconocidos o sospechosos",
+      "category": "windows",
+      "tools_used": [
+        "process_list",
+        "process_inspect"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "windows/procesos-desconocidos.md",
+      "summary": "Repasa la lista de procesos buscando nombres desconocidos, imitaciones de procesos del sistema y cadenas padre-hijo inusuales, y propone qué comprobar de cada uno.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nQuiero saber si hay procesos que no deberían estar en este equipo.\n\n1. Llama a process_list.\n2. Clasifica cada executable_name en: componente de Windows, software conocido, o desconocido para ti.\n3. Para los desconocidos y para los que imitan nombres del sistema (por ejemplo svch0st.exe, scvhost.exe, lsass con mayúsculas raras, o un explorer.exe hijo de algo que no sea userinit o el propio explorer), usa process_inspect con su pid y el de su padre para reconstruir quién los lanzó.\n4. Dame una tabla: pid, nombre, padre, por qué te llama la atención y qué comprobaría yo a continuación (por ejemplo, ver la ruta del ejecutable o su firma con otra herramienta).\n\nSolo lectura. No afirmes que algo es malware: indica el grado de sospecha y la razón. No propongas terminar procesos desde aquí."
+    },
+    {
+      "id": "arquitectura-en-una-pagina",
+      "title": "La arquitectura en una página",
+      "category": "onboarding",
+      "tools_used": [
+        "list_directory",
+        "search_files",
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "onboarding/arquitectura-en-una-pagina.md",
+      "summary": "Produce una vista de arquitectura de una página (componentes, dependencias, fronteras y flujo típico) construida a partir de manifiestos y código, no de suposiciones.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nDescribe la arquitectura de <RUTA_DEL_REPO> en una página.\n\n1. Identifica los componentes (aplicaciones, paquetes, crates, servicios) con list_directory (depth 2) y search_files sobre los manifiestos.\n2. Para cada componente, lee su manifiesto y su punto de entrada con read_file (base64) y averigua de qué otros componentes depende.\n3. Con search_content localiza las fronteras: servidores HTTP o gRPC, colas, acceso a base de datos, llamadas a APIs externas, lectura de configuración.\n4. Entrégame:\n   - un diagrama en texto (Mermaid o ASCII) con los componentes y sus dependencias;\n   - una frase por componente con su responsabilidad;\n   - cómo fluye una petición típica entre ellos;\n   - las decisiones de diseño que se deducen del código y dónde está documentada cada una, si lo está.\n\nSolo lectura. Distingue lo que has leído en el código de lo que deduces."
+    },
+    {
+      "id": "como-se-compila-y-se-prueba",
+      "title": "Cómo se compila y se prueba este proyecto",
+      "category": "onboarding",
+      "tools_used": [
+        "search_files",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "onboarding/como-se-compila-y-se-prueba.md",
+      "summary": "Deduce de manifiestos, scripts y CI los comandos reales de build y test y los entrega como argv listos para el terminal aprobado, señalando dónde la documentación y el CI discrepan.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nAverigua cómo se compila, se prueba y se ejecuta <RUTA_DEL_REPO>, sin ejecutar nada.\n\n1. Con search_files localiza: manifiestos (package.json, Cargo.toml, pyproject.toml, *.csproj, go.mod), scripts (Makefile, justfile, *.ps1, *.sh, scripts/**), configuración de CI (.github/workflows/**, .gitlab-ci.yml, azure-pipelines.yml) y archivos de versión de herramientas (rust-toolchain*, .nvmrc, .python-version, global.json).\n2. Lee con read_file (base64) los relevantes. La configuración de CI es la fuente más fiable: muestra lo que de verdad se ejecuta.\n3. Entrégame:\n   - los requisitos con versiones (toolchain, runtime, herramientas);\n   - los comandos exactos de build, test, lint y ejecución, como listas argv listas para usar con el terminal aprobado de Vör;\n   - las variables de entorno o servicios que necesitan los tests;\n   - las diferencias entre lo que dice el README y lo que hace el CI.\n\nSolo lectura. No ejecutes ningún comando: cuando quiera ejecutarlos, usaré los prompts de tests, que piden aprobación."
+    },
+    {
+      "id": "glosario-del-dominio",
+      "title": "Glosario del dominio del proyecto",
+      "category": "onboarding",
+      "tools_used": [
+        "search_files",
+        "search_content",
+        "read_file"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "onboarding/glosario-del-dominio.md",
+      "summary": "Extrae el vocabulario de negocio del código y lo organiza en un glosario con definiciones, referencias y ambigüedades, para entender las conversaciones del equipo.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nConstruye un glosario de los términos propios del dominio de <RUTA_DEL_REPO>.\n\n1. Localiza con search_files los modelos de datos, esquemas y tipos centrales (por ejemplo **/models/**, **/domain/**, **/*schema*, **/*.proto, **/migrations/**).\n2. Léelos con read_file (base64) y extrae los nombres de entidades, estados y conceptos que no sean vocabulario técnico genérico.\n3. Para cada término, usa search_content para ver cómo se usa en código y documentación, y detecta sinónimos (dos nombres para lo mismo) y homónimos (un nombre para dos cosas).\n4. Entrégame una tabla: término, definición en una frase, dónde se define (archivo:línea), términos relacionados y notas sobre ambigüedades.\n\nSolo lectura. Si una definición es deducción tuya y no está escrita en ningún sitio, márcala como tal."
+    },
+    {
+      "id": "primer-dia-en-el-repo",
+      "title": "Primer día en un repositorio nuevo",
+      "category": "onboarding",
+      "tools_used": [
+        "commander_status",
+        "list_directory",
+        "read_file",
+        "git_status"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "onboarding/primer-dia-en-el-repo.md",
+      "summary": "Primera sesión en un repositorio: comprueba la conexión, el estado de Git y la estructura, lee la documentación clave y lo resume en una guía de una página con las preguntas pendientes.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander. Llama primero a commander_status para confirmar que el dispositivo <DEVICE_ID> está conectado (si no te doy uno, usa recommended_device_id). En todas las llamadas siguientes pasa device_id y el workspace_id <WORKSPACE_ID>.\n\nAcabo de llegar al repositorio <RUTA_DEL_REPO> y no sé nada de él. Oriéntame.\n\n1. Llama a git_status para saber la rama actual, si está al día con su upstream y si hay trabajo local sin commitear que no sea mío.\n2. Recorre la estructura con list_directory (depth 2).\n3. Lee con read_file (base64) el README, la guía de contribución (CONTRIBUTING, AGENTS, docs/) y el manifiesto principal.\n4. Entrégame una guía de una página:\n   - qué hace el proyecto y para quién;\n   - cómo está organizado (carpetas clave);\n   - cómo se compila, se prueba y se ejecuta, según lo documentado;\n   - las reglas del equipo que deba conocer (ramas, estilo, revisiones);\n   - las preguntas que debería hacer a alguien del equipo porque no están escritas.\n\nSolo lectura. No ejecutes nada ni modifiques archivos."
+    },
+    {
+      "id": "primera-tarea-sugerida",
+      "title": "Proponer una primera tarea asequible",
+      "category": "onboarding",
+      "tools_used": [
+        "search_content",
+        "read_file",
+        "git_status"
+      ],
+      "requires_approval": false,
+      "risk": "read-only",
+      "path": "onboarding/primera-tarea-sugerida.md",
+      "summary": "Busca en el código tareas pequeñas y seguras (TODO, pruebas que faltan, documentación pendiente) y propone tres que sirvan también para conocer el proyecto.",
+      "placeholders": [
+        "DEVICE_ID",
+        "WORKSPACE_ID",
+        "RUTA_DEL_REPO"
+      ],
+      "requires_unmerged_tools": [],
+      "prompt": "Usa Vör Commander en el dispositivo <DEVICE_ID> y el workspace <WORKSPACE_ID>; pasa device_id y workspace_id en cada llamada.\n\nSoy nuevo en <RUTA_DEL_REPO>. Propón tres tareas pequeñas y útiles para empezar a contribuir.\n\n1. Llama a git_status para confirmar en qué rama estoy y que no hay trabajo a medias.\n2. Busca candidatos con search_content (regex true), por ejemplo \"TODO|FIXME|HACK|XXX\", además de funciones sin tests y documentación marcada como pendiente.\n3. Lee con read_file (base64, con line_start y line_count) el contexto de los candidatos más prometedores.\n4. Elige tres tareas que se puedan terminar en un día, que no toquen partes críticas y que me obliguen a recorrer una zona distinta del código cada una. Para cada una: qué hay que hacer, archivos implicados, cómo comprobar que está bien y a quién o qué documento consultar antes.\n\nSolo lectura. No empieces ninguna tarea."
+    }
+  ]
+}

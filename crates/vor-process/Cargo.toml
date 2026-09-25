@@ -1,0 +1,13 @@
+[package]
+name = "vor-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+vor-core = { path = "../vor-core" }
+vor-protocol = { path = "../vor-protocol" }
+serde.workspace = true
+thiserror.workspace = true
+windows-sys.workspace = true

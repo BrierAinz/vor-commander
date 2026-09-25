@@ -1,0 +1,21 @@
+[package]
+name = "vor-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+fault-injection = ["vor-audit/fault-injection"]
+
+[dependencies]
+thiserror.workspace = true
+vor-approval = { path = "../vor-approval" }
+vor-protocol = { path = "../vor-protocol" }
+vor-policy = { path = "../vor-policy" }
+vor-audit = { path = "../vor-audit" }
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+rand.workspace = true
+tempfile.workspace = true

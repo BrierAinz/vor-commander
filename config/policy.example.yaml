@@ -1,0 +1,52 @@
+﻿version: 1
+policy_id: local-default
+
+filesystem:
+  - path: "D:\\Proyectos\\10_Active\\vor-commander\\state\\local\\m1-canary"
+    read: auto
+    write: approval
+  - path: "D:\\Proyectos"
+    read: auto
+    write: auto
+  - path: "D:\\"
+    read: auto
+    write: approval
+  - path: "C:\\Users\\example"
+    read: approval
+    write: approval
+  - path: "C:\\Windows"
+    read: approval
+    write: elevated_approval
+
+terminal:
+  default: approval
+  inline_eval: elevated_approval
+  project_tests: auto
+  destructive: approval
+  elevated: approval
+
+process:
+  list: auto
+  inspect: auto
+  terminate: approval
+
+browser:
+  authenticated_session_use: approval
+  secret_extraction: deny
+  publish: approval
+  purchase: deny
+
+desktop:
+  enabled: false
+
+network:
+  public_listener_fallback: deny
+  transports:
+    lan_grpc: 10
+    tailscale_grpc: 20
+    cloudflare_wss: 30
+    relay_wss: 40
+
+audit:
+  required: true
+  fail_if_unwritable: true

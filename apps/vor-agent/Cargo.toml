@@ -1,0 +1,23 @@
+[package]
+name = "vor-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+vor-identity = { path = "../../crates/vor-identity" }
+vor-secrets = { path = "../../crates/vor-secrets" }
+vor-dispatch = { path = "../../crates/vor-dispatch" }
+vor-private-grpc = { path = "../../crates/vor-private-grpc" }
+vor-core = { path = "../../crates/vor-core" }
+vor-policy = { path = "../../crates/vor-policy" }
+vor-audit = { path = "../../crates/vor-audit" }
+vor-remote = { path = "../../crates/vor-remote" }
+tokio.workspace = true
+tokio-util.workspace = true
+thiserror.workspace = true

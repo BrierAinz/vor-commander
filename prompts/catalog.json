@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "exploracion",
+      "title": "Exploración y comprensión de código",
+      "description": "Entender un proyecto leyendo sus archivos sin modificar nada."
+    },
+    {
+      "id": "depuracion",
+      "title": "Depuración y diagnóstico",
+      "description": "Logs, procesos y estado de Git para encontrar la causa de un fallo."
+    },
+    {
+      "id": "documentacion",
+      "title": "Documentación",
+      "description": "Redactar y mantener documentación a partir del código real."
+    },
+    {
+      "id": "revision",
+      "title": "Revisión de cambios locales",
+      "description": "Revisar lo que hay sin commitear usando git_status y git_diff."
+    },
+    {
+      "id": "edicion",
+      "title": "Edición segura",
+      "description": "Escrituras con el flujo prepare_write / commit_write y aprobación firmada."
+    },
+    {
+      "id": "tests",
+      "title": "Tests y builds",
+      "description": "Ejecutar tests, compilaciones y linters con el terminal acotado y aprobado."
+    },
+    {
+      "id": "windows",
+      "title": "Diagnóstico del equipo Windows",
+      "description": "Disco, procesos y servicios; primero lectura, después comandos aprobados."
+    },
+    {
+      "id": "onboarding",
+      "title": "Incorporación a un repositorio nuevo",
+      "description": "Orientarse en un repositorio desconocido en la primera sesión."
+    }
+  ],
+  "tools": [
+    {
+      "name": "commander_status",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Estado no sensible de la pasarela: dispositivos conectados autorizados y recommended_device_id."
+    },
+    {
+      "name": "read_file",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Lee un archivo autorizado; la salida va en base64. Los rangos (offset/length, line_start/line_count) llegan con PR #5."
+    },
+    {
+      "name": "list_directory",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Lista un directorio autorizado sin seguir enlaces ni junctions; depth hasta 16, max_entries hasta 10000."
+    },
+    {
+      "name": "search_files",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Busca rutas por glob bajo una raíz autorizada; max_results hasta 10000."
+    },
+    {
+      "name": "search_content",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Búsqueda literal o regex acotada; devuelve un objeto con matches y contadores de archivos omitidos, con 5 s de límite y líneas truncadas a 4 KiB."
+    },
+    {
+      "name": "file_info",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Metadatos sin contenido: tipo, tamaño, fechas y solo-lectura."
+    },
+    {
+      "name": "git_status",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "git status --porcelain=v2 --branch --untracked-files=all de un repositorio autorizado."
+    },
+    {
+      "name": "git_diff",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "git diff del árbol de trabajo frente al índice; no incluye lo ya preparado (staged) ni archivos sin seguimiento."
+    },
+    {
+      "name": "process_list",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Lista procesos con pid, parent_pid y executable_name; sin CPU ni memoria."
+    },
+    {
+      "name": "process_inspect",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Devuelve pid, parent_pid y executable_name de un PID concreto."
+    },
+    {
+      "name": "prepare_write",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Prepara una escritura de archivo completo (hasta 1 MiB); nunca escribe. Devuelve el desafío de aprobación."
+    },
+    {
+      "name": "commit_write",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Ejecuta la escritura preparada con la solicitud exacta y una ApprovalGrant firmada de un solo uso."
+    },
+    {
+      "name": "prepare_edit",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "pilot/edit-block",
+      "summary": "El dispositivo aplica hasta 20 reemplazos exactos y ordenados, conserva codificación/finales de línea y devuelve diff y desafío de filesystem.write."
+    },
+    {
+      "name": "prepare_terminal",
+      "risk": "exec",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Prepara un terminal.exec acotado (argv estructurado, cwd, timeout, presupuesto de salida); nunca arranca un proceso."
+    },
+    {
+      "name": "commit_terminal",
+      "risk": "exec",
+      "requires_approval": true,
+      "available_on": "main",
+      "summary": "Arranca el proceso preparado con una ApprovalGrant firmada de un solo uso y devuelve un session_id."
+    },
+    {
+      "name": "poll_terminal",
+      "risk": "read-only",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Consulta una sesión de terminal propia; el resultado final se entrega una sola vez."
+    },
+    {
+      "name": "cancel_terminal",
+      "risk": "exec",
+      "requires_approval": false,
+      "available_on": "main",
+      "summary": "Pide cancelar una sesión de terminal propia; nunca autoriza un proceso nuevo."
+    }
+  ],
+  "forbidden_tool_names": [
+    "write_file",
+    "edit_block",
+    "execute_command",
+    "start_process",
+    "interact_with_process",
+    "read_process_output",
+    "kill_process",
+    "force_terminate",
+    "list_sessions",
+    "read_multiple_files",
+    "create_directory",
+    "move_file",
+    "get_file_info",
+    "terminal_exec",
+    "run_command",
+    "process_terminate"
+  ]
+}

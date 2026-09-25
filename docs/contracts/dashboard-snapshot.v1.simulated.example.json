@@ -1,0 +1,142 @@
+{
+  "devices": [
+    {
+      "agent_version": {
+        "provenance": "simulated",
+        "value": "0.0.0-preview"
+      },
+      "capabilities": {
+        "provenance": "simulated",
+        "value": [
+          "filesystem.read",
+          "git.status"
+        ]
+      },
+      "device_id": "dev_example_laptop",
+      "display_name": {
+        "provenance": "simulated",
+        "value": "Example laptop"
+      },
+      "last_seen_unix_ms": {
+        "provenance": "unknown",
+        "reason": "not_implemented"
+      },
+      "os": {
+        "provenance": "simulated",
+        "value": "Linux"
+      },
+      "status": {
+        "provenance": "simulated",
+        "value": "not_connected"
+      },
+      "workspace_ids": [
+        "ws_example"
+      ]
+    },
+    {
+      "agent_version": {
+        "provenance": "simulated",
+        "value": "0.0.0-preview"
+      },
+      "capabilities": {
+        "provenance": "simulated",
+        "value": [
+          "filesystem.read",
+          "git.status"
+        ]
+      },
+      "device_id": "dev_example_retired",
+      "display_name": {
+        "provenance": "simulated",
+        "value": "Example retired device"
+      },
+      "last_seen_unix_ms": {
+        "provenance": "unknown",
+        "reason": "not_implemented"
+      },
+      "os": {
+        "provenance": "simulated",
+        "value": "Windows"
+      },
+      "status": {
+        "provenance": "simulated",
+        "value": "revoked"
+      },
+      "workspace_ids": [
+        "ws_example"
+      ]
+    },
+    {
+      "agent_version": {
+        "provenance": "simulated",
+        "value": "0.0.0-preview"
+      },
+      "capabilities": {
+        "provenance": "simulated",
+        "value": [
+          "filesystem.read",
+          "git.status"
+        ]
+      },
+      "device_id": "dev_example_workstation",
+      "display_name": {
+        "provenance": "simulated",
+        "value": "Example workstation"
+      },
+      "last_seen_unix_ms": {
+        "provenance": "unknown",
+        "reason": "not_implemented"
+      },
+      "os": {
+        "provenance": "simulated",
+        "value": "Windows"
+      },
+      "status": {
+        "provenance": "simulated",
+        "value": "connected"
+      },
+      "workspace_ids": [
+        "ws_example"
+      ]
+    }
+  ],
+  "generated_at_unix_ms": 1790000000000,
+  "mode": "simulated",
+  "organization": {
+    "name": {
+      "provenance": "simulated",
+      "value": "Example Organization"
+    },
+    "organization_id": "org_example",
+    "viewer_role": {
+      "provenance": "simulated",
+      "value": "admin"
+    }
+  },
+  "schema_version": 1,
+  "subscription": {
+    "provenance": "simulated",
+    "value": {
+      "active": false,
+      "plan": "preview"
+    }
+  },
+  "summary": {
+    "connected_devices": {
+      "provenance": "simulated",
+      "value": 1
+    },
+    "revoked_devices": {
+      "provenance": "simulated",
+      "value": 1
+    },
+    "total_devices": {
+      "provenance": "simulated",
+      "value": 3
+    }
+  },
+  "usage": {
+    "provenance": "unknown",
+    "reason": "not_implemented"
+  }
+}

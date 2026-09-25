@@ -1,0 +1,20 @@
+[package]
+name = "vor-wire"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+prost.workspace = true
+prost-types.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+vor-approval = { path = "../vor-approval" }
+vor-protocol = { path = "../vor-protocol" }
+
+[build-dependencies]
+prost-build.workspace = true
+protoc-bin-vendored.workspace = true

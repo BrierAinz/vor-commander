@@ -1,0 +1,20 @@
+[package]
+name = "vor-browser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+tungstenite.workspace = true
+ureq.workspace = true
+vor-core = { path = "../vor-core" }
+
+[dev-dependencies]
+tempfile.workspace = true

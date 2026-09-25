@@ -1,0 +1,38 @@
+# Secrets and local identity
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+secrets/
+credentials/
+
+# Runtime state
+data/
+state/
+logs/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+
+# Build/cache
+target/
+# Salidas de compilacion cruzada. Sin esta linea, `git add -A` mete 4.501
+# artefactos de build y deja los ~145 ficheros reales enterrados debajo.
+target-*/
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
+build/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

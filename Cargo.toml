@@ -1,0 +1,78 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/vor-protocol",
+  "crates/vor-wire",
+  "crates/vor-remote",
+  "crates/vor-approval",
+  "crates/vor-secrets",
+  "crates/vor-identity",
+  "crates/vor-private-grpc",
+  "crates/vor-dispatch",
+  "crates/vor-policy",
+  "crates/vor-audit",
+  "crates/vor-core",
+  "crates/vor-fs",
+  "crates/vor-process",
+  "crates/vor-git",
+  "crates/vor-terminal",
+  "crates/vor-maintenance",
+  "crates/vor-browser",
+  "crates/vor-desktop",
+  "crates/vor-auth",
+  "crates/vor-dashboard",
+  "apps/vor-agent",
+  "apps/vor-gateway",
+  "apps/vor-relay",
+  "apps/vor-control-plane",
+  "apps/vor-approver",
+  "apps/vor-maintainer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MPL-2.0"
+
+[workspace.dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+schemars = "1.2.2"
+sha2 = "0.11.0"
+hex = "0.4.3"
+thiserror = "2.0.20"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+yaml_serde = "0.10.7"
+tempfile = "3.27.0"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging"] }
+ureq = { version = "3.4.2", default-features = false, features = ["json", "rustls"] }
+tungstenite = "0.30.0"
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3.34"
+url = "2.5.8"
+base64 = "0.23.1"
+png = "0.18.1"
+rand = "0.10.2"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "io-util"] }
+axum = { version = "0.8.9", features = ["ws"] }
+rmcp = { version = "3.4.0", features = ["transport-streamable-http-server"] }
+tokio-util = "0.7.19"
+tower = { version = "0.5.3", features = ["util"] }
+prost = "0.14.4"
+prost-types = "0.14.4"
+prost-build = "0.14.4"
+protoc-bin-vendored = "3.2.0"
+ed25519-dalek = "3.0.0"
+zeroize = "1.9.0"
+rcgen = { version = "0.14.10", features = ["x509-parser", "zeroize"] }
+rustls = { version = "0.23.43", default-features = false, features = ["std", "ring", "tls12"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12"] }
+time = "0.3.55"
+regex = "1.12.2"
+encoding_rs = "0.8.35"
+tonic = { version = "0.14.6", default-features = false, features = ["router", "transport", "codegen", "tls-ring"] }
+tonic-prost = "0.14.6"
+tonic-prost-build = "0.14.6"
+tokio-stream = { version = "0.1.19", features = ["net"] }

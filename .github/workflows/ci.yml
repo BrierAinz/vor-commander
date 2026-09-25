@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Windows, Rust 1.96.0)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.96.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.96.0
+          components: rustfmt
+          cache: false
+          # La accion pone RUSTFLAGS=-D warnings por defecto; el CI mide lo mismo que en local.
+          # Endurecer a -D warnings es una decision aparte (hoy no se ha medido).
+          rustflags: ""
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --no-fail-fast
+
+      # Los casos de inyeccion de fallos de M4 (C21-C24) solo existen con esta feature;
+      # sin este paso nadie los ejecutaria.
+      - name: Run M4 fault-injection tests
+        run: |
+          cargo test -p vor-audit --features fault-injection --locked --no-fail-fast
+          cargo test -p vor-dispatch --features fault-injection --locked --no-fail-fast

@@ -1,0 +1,23 @@
+[package]
+name = "vor-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+png.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+windows.workspace = true
+vor-core = { path = "../vor-core" }
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+vor-approval = { path = "../vor-approval" }
+vor-audit = { path = "../vor-audit" }
+vor-policy = { path = "../vor-policy" }
+vor-protocol = { path = "../vor-protocol" }

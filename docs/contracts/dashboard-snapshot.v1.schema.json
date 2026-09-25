@@ -1,0 +1,751 @@
+{
+  "$defs": {
+    "DeviceStatus": {
+      "oneOf": [
+        {
+          "const": "connected",
+          "description": "Holds an authenticated transport link to this gateway right now.",
+          "type": "string"
+        },
+        {
+          "const": "not_connected",
+          "description": "Paired and not revoked, but no transport link to this gateway right now.",
+          "type": "string"
+        },
+        {
+          "const": "revoked",
+          "description": "Revoked in the tenant store. Takes precedence over any transport state.",
+          "type": "string"
+        }
+      ]
+    },
+    "DeviceView": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_version": {
+          "$ref": "#/$defs/Observed"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/Observed5"
+        },
+        "device_id": {
+          "description": "Structural key; provenance follows the snapshot `mode`.",
+          "type": "string"
+        },
+        "display_name": {
+          "$ref": "#/$defs/Observed"
+        },
+        "last_seen_unix_ms": {
+          "$ref": "#/$defs/Observed6"
+        },
+        "os": {
+          "$ref": "#/$defs/Observed"
+        },
+        "status": {
+          "$ref": "#/$defs/Observed4"
+        },
+        "workspace_ids": {
+          "description": "Structural keys; provenance follows the snapshot `mode`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "device_id",
+        "workspace_ids",
+        "status",
+        "display_name",
+        "os",
+        "agent_version",
+        "capabilities",
+        "last_seen_unix_ms"
+      ],
+      "type": "object"
+    },
+    "Observed": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed2": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ViewerRole"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ViewerRole"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed3": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed4": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/DeviceStatus"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/DeviceStatus"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed5": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed6": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed7": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SubscriptionView"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SubscriptionView"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Observed8": {
+      "description": "An observable value together with its provenance.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "observed_at_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "provenance": {
+              "const": "live",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "$ref": "#/$defs/UsageEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "provenance",
+            "value",
+            "observed_at_unix_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "unknown",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/UnknownReason"
+            }
+          },
+          "required": [
+            "provenance",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "provenance": {
+              "const": "simulated",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "$ref": "#/$defs/UsageEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "provenance",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OrganizationView": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Observed"
+        },
+        "organization_id": {
+          "description": "Structural key; provenance follows the snapshot `mode`.",
+          "type": "string"
+        },
+        "viewer_role": {
+          "$ref": "#/$defs/Observed2"
+        }
+      },
+      "required": [
+        "organization_id",
+        "name",
+        "viewer_role"
+      ],
+      "type": "object"
+    },
+    "SnapshotMode": {
+      "enum": [
+        "live",
+        "simulated"
+      ],
+      "type": "string"
+    },
+    "SubscriptionView": {
+      "additionalProperties": false,
+      "description": "Commercial state for display only. It is never an authorization input.",
+      "properties": {
+        "active": {
+          "type": "boolean"
+        },
+        "plan": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "active"
+      ],
+      "type": "object"
+    },
+    "SummaryView": {
+      "additionalProperties": false,
+      "description": "Counts derived from `devices` of the same snapshot. v1 has no other source\nfor them, so a known count must agree with the device list.",
+      "properties": {
+        "connected_devices": {
+          "$ref": "#/$defs/Observed3"
+        },
+        "revoked_devices": {
+          "$ref": "#/$defs/Observed3"
+        },
+        "total_devices": {
+          "$ref": "#/$defs/Observed3"
+        }
+      },
+      "required": [
+        "total_devices",
+        "connected_devices",
+        "revoked_devices"
+      ],
+      "type": "object"
+    },
+    "UnknownReason": {
+      "oneOf": [
+        {
+          "const": "not_reported",
+          "description": "The device or backend does not report this value yet.",
+          "type": "string"
+        },
+        {
+          "const": "not_implemented",
+          "description": "The backend feature that would produce this value does not exist yet.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "The source exists but could not be read for this snapshot.",
+          "type": "string"
+        }
+      ]
+    },
+    "UsageEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "units": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "usage_key": {
+          "description": "Structural key; provenance follows the enclosing `usage` value.",
+          "type": "string"
+        },
+        "workspace_id": {
+          "description": "Structural key; provenance follows the enclosing `usage` value.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "usage_key",
+        "units"
+      ],
+      "type": "object"
+    },
+    "ViewerRole": {
+      "enum": [
+        "viewer",
+        "operator",
+        "admin"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "devices": {
+      "items": {
+        "$ref": "#/$defs/DeviceView"
+      },
+      "type": "array"
+    },
+    "generated_at_unix_ms": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "mode": {
+      "$ref": "#/$defs/SnapshotMode",
+      "description": "Snapshot mode. Identifiers carry no per-field provenance and inherit\nthis mode; their content is not inspected by validation."
+    },
+    "organization": {
+      "$ref": "#/$defs/OrganizationView"
+    },
+    "schema_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "subscription": {
+      "$ref": "#/$defs/Observed7"
+    },
+    "summary": {
+      "$ref": "#/$defs/SummaryView"
+    },
+    "usage": {
+      "$ref": "#/$defs/Observed8"
+    }
+  },
+  "required": [
+    "schema_version",
+    "mode",
+    "generated_at_unix_ms",
+    "organization",
+    "summary",
+    "devices",
+    "subscription",
+    "usage"
+  ],
+  "title": "DashboardSnapshot",
+  "type": "object"
+}

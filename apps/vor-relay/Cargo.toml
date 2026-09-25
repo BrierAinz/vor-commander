@@ -1,0 +1,24 @@
+[package]
+name = "vor-relay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+prost-types.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+vor-auth = { path = "../../crates/vor-auth" }
+vor-dispatch = { path = "../../crates/vor-dispatch" }
+vor-wire = { path = "../../crates/vor-wire" }
+vor-secrets = { path = "../../crates/vor-secrets" }
+
+[dev-dependencies]
+futures-util.workspace = true
+tempfile.workspace = true
+tokio-tungstenite.workspace = true

@@ -1,0 +1,38 @@
+[package]
+name = "vor-private-grpc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+zeroize.workspace = true
+futures-util.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+rand.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tokio-util.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+vor-wire = { path = "../vor-wire" }
+vor-dispatch = { path = "../vor-dispatch" }
+
+[build-dependencies]
+protoc-bin-vendored.workspace = true
+tonic-prost-build.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+serde_json.workspace = true
+rcgen.workspace = true
+tempfile.workspace = true
+vor-approval = { path = "../vor-approval" }
+vor-identity = { path = "../vor-identity" }
+vor-secrets = { path = "../vor-secrets" }
+vor-protocol = { path = "../vor-protocol" }

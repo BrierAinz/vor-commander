@@ -1,0 +1,105 @@
+syntax = "proto3";
+package vor.commander.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum PolicyDecisionKind {
+  POLICY_DECISION_UNSPECIFIED = 0;
+  POLICY_DECISION_AUTO = 1;
+  POLICY_DECISION_APPROVAL = 2;
+  POLICY_DECISION_DENY = 3;
+}
+
+message Capability {
+  string name = 1;
+  repeated string constraints = 2;
+}
+
+message ActionRequest {
+  string request_id = 1;
+  string organization_id = 2;
+  string actor_id = 3;
+  string device_id = 4;
+  string action = 5;
+  string target = 6;
+  bytes parameters_json = 7;
+  repeated Capability requested_capabilities = 8;
+  google.protobuf.Timestamp expires_at = 9;
+  bytes nonce = 10;
+  bytes envelope_digest = 11;
+}
+
+message PolicyDecision {
+  string request_id = 1;
+  PolicyDecisionKind decision = 2;
+  string policy_id = 3;
+  string reason_code = 4;
+  bytes envelope_digest = 5;
+  google.protobuf.Timestamp decided_at = 6;
+}
+
+message ApprovalGrant {
+  string request_id = 1;
+  string approver_id = 2;
+  bytes envelope_digest = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  bytes signature = 5;
+  string policy_id = 6;
+  string required_capability = 7;
+  bytes approval_nonce = 8;
+}
+
+message ApprovedActionRequest {
+  ActionRequest request = 1;
+  ApprovalGrant approval = 2;
+}
+
+message ActionResult {
+  string request_id = 1;
+  int32 exit_code = 2;
+  string status = 3;
+  bytes stdout_digest = 4;
+  bytes stderr_digest = 5;
+  google.protobuf.Timestamp completed_at = 6;
+  bytes output = 7;
+  string content_type = 8;
+  bool truncated = 9;
+}
+
+message DeviceHello {
+  string device_id = 1;
+  string agent_version = 2;
+  repeated string transports = 3;
+  repeated string capabilities = 4;
+}
+
+message RelayAck {
+  string message_id = 1;
+  string status = 2;
+  bytes payload_digest = 3;
+}
+
+message RelayHeartbeat {
+  google.protobuf.Timestamp sent_at = 1;
+}
+
+message RelayFrame {
+  uint32 wire_version = 1;
+  string message_id = 2;
+  string device_id = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  bytes nonce = 5;
+  oneof payload {
+    DeviceHello device_hello = 10;
+    ActionRequest action_request = 11;
+    ActionResult action_result = 12;
+    ApprovalGrant approval_grant = 13;
+    PolicyDecision policy_decision = 14;
+    RelayAck ack = 15;
+    RelayHeartbeat heartbeat = 16;
+    ApprovedActionRequest approved_action_request = 17;
+  }
+}
+service DevicePrivateLink {
+  rpc Connect(stream RelayFrame) returns (stream RelayFrame);
+}
