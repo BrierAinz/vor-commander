@@ -12,4 +12,4 @@ foreach ($t in $targets) {
   }
   Remove-Item $t.Pid -Force -ErrorAction SilentlyContinue
 }
-Write-Host 'Vör Local Pilot: STOPPED'
+Write-Host 'Vor Local Pilot: STOPPED'

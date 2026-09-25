@@ -26,3 +26,8 @@ function Wait-VorHttp([string]$Uri, [int]$Seconds = 20) {
   } while ((Get-Date) -lt $deadline)
   return $false
 }
+
+function Write-Utf8NoBom([string]$Path, [string]$Content) {
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [IO.File]::WriteAllText($Path, $Content, $encoding)
+}

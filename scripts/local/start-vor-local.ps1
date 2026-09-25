@@ -16,10 +16,13 @@ if (-not (Test-VorProcess $cpPid $cpExe)) {
 if (-not (Wait-VorHttp 'http://127.0.0.1:8742/healthz')) { throw 'Gateway health check failed. See state/local/logs/control-plane.err.log' }
 if (-not (Wait-VorHttp 'http://127.0.0.1:8789/healthz')) { throw 'Relay health check failed. See state/local/logs/control-plane.err.log' }
 if (-not (Test-VorProcess $agentPid $agentExe)) {
-  $args = @('private-run','--endpoint','https://127.0.0.1:8790','--server-name','localhost','--device',$config.device_id,'--ca',$config.ca,'--cert',$config.device_cert,'--secret-store',$config.secret_store,'--policy',$config.policy,'--root',$config.allowed_root,'--git',$config.git,'--state',$config.agent_state)
+  $args = @('private-run','--endpoint','https://127.0.0.1:8790','--server-name','localhost','--device',$config.device_id,'--ca',$config.ca,'--cert',$config.device_cert,'--secret-store',$config.secret_store,'--policy',$config.policy)
+  $roots = if ($config.PSObject.Properties['allowed_roots']) { @($config.allowed_roots) } else { @($config.allowed_root) }
+  foreach ($root in $roots) { $args += @('--root', [string]$root) }
+  $args += @('--git',$config.git,'--state',$config.agent_state)
   $p = Start-Process -FilePath $agentExe -ArgumentList $args -WorkingDirectory $RepoRoot -RedirectStandardOutput (Join-Path $logs 'agent.out.log') -RedirectStandardError (Join-Path $logs 'agent.err.log') -WindowStyle Hidden -PassThru
   Set-Content -Path $agentPid -Value $p.Id -NoNewline
 }
 Start-Sleep -Milliseconds 800
 if (-not (Test-VorProcess $agentPid $agentExe)) { throw 'Device Agent exited early. See state/local/logs/agent.err.log' }
-Write-Host 'Vör Local Pilot: RUNNING'
+Write-Host 'Vor Local Pilot: RUNNING'

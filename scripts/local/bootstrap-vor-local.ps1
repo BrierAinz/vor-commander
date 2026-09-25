@@ -1,10 +1,13 @@
 param(
   [string]$DeviceId = ('vor-' + [Environment]::MachineName.ToLowerInvariant()),
-  [string]$AllowedRoot = 'D:\Proyectos',
+  [string[]]$AllowedRoot = @([Environment]::GetFolderPath('MyDocuments')),
   [int]$GrantTtlSeconds = 604800,
-  [switch]$SkipBuild
+  [switch]$SkipBuild,
+  [string]$CargoPath,
+  [string]$VcVarsPath
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
+. (Join-Path $PSScriptRoot 'toolchain.ps1')
 $identity = Join-Path $LocalState 'identity'
 $secretStore = Join-Path $LocalState 'device-secrets'
 $gatewayState = Join-Path $LocalState 'gateway\auth.json'
@@ -13,17 +16,18 @@ $agentState = Join-Path $LocalState 'device-runtime'
 $policy = Join-Path $RepoRoot 'config\policy.example.yaml'
 $credPath = Join-Path $LocalState 'mcp-credential.clixml'
 New-Item -ItemType Directory -Force -Path $LocalState,$identity,$secretStore,$agentState | Out-Null
-if (-not (Test-Path $AllowedRoot)) { throw "Allowed root does not exist: $AllowedRoot" }
+if (-not $AllowedRoot -or $AllowedRoot.Count -eq 0) { throw 'At least one allowed root is required.' }
+$resolvedRoots = @()
+foreach ($root in $AllowedRoot) {
+  if (-not $root -or -not (Test-Path -LiteralPath $root -PathType Container)) { throw "Allowed root does not exist: $root" }
+  $resolved = (Resolve-Path -LiteralPath $root).Path
+  if ([IO.Path]::GetPathRoot($resolved) -eq $resolved) { throw "A drive root is not allowed: $resolved" }
+  $resolvedRoots += $resolved
+}
 $git = (Get-Command git.exe -ErrorAction Stop).Source
-$cargo = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
-if (-not (Test-Path $cargo)) { $cargo = (Get-Command cargo.exe -ErrorAction Stop).Source }
-$vcvars = 'D:\Toolchains\Microsoft\VisualStudio2026\BuildTools\VC\Auxiliary\Build\vcvars64.bat'
-if (-not (Test-Path $vcvars)) { throw "MSVC environment not found: $vcvars" }
 if (-not $SkipBuild) {
-  Write-Host 'Building Vör release binaries...'
-  $cmd = "call `"$vcvars`" >nul && cd /d `"$RepoRoot`" && `"$cargo`" build --release -p vor-agent -p vor-control-plane -p vor-gateway"
-  & cmd.exe /d /c $cmd
-  if ($LASTEXITCODE -ne 0) { throw "Cargo release build failed: $LASTEXITCODE" }
+  Write-Host 'Building Vor release binaries...'
+  Invoke-VorCargoBuild -RepoRoot $RepoRoot -Packages @('vor-agent','vor-control-plane','vor-gateway') -CargoPath $CargoPath -VcVarsPath $VcVarsPath
 }
 $agent = Join-Path $BinDir 'vor-agent.exe'
 $gateway = Join-Path $BinDir 'vor-gateway.exe'
@@ -35,14 +39,23 @@ if ($LASTEXITCODE -ne 0) { throw 'Local identity enrollment failed.' }
 $account = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls.exe $LocalState /inheritance:r /grant:r "${account}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' | Out-Null
 & icacls.exe "$LocalState\*" /reset /T /C | Out-Null
+$policyLines = @('version: 1','policy_id: local-pilot','','filesystem:')
+foreach ($root in $resolvedRoots) {
+  $escaped = $root.Replace('\','\\').Replace('"','\"')
+  $policyLines += "  - path: `"$escaped`""
+  $policyLines += '    read: auto'
+  $policyLines += '    write: approval'
+}
+$policyLines += @('','terminal:','  default: approval','  inline_eval: elevated_approval','  project_tests: approval','  destructive: deny','  elevated: deny','','process:','  list: auto','  inspect: auto','  terminate: approval','','browser:','  authenticated_session_use: deny','  secret_extraction: deny','  publish: deny','  purchase: deny','','desktop:','  enabled: false','','network:','  public_listener_fallback: deny','','audit:','  required: true','  fail_if_unwritable: true','')
+Write-Utf8NoBom $policy ($policyLines -join "`r`n")
 $config = [ordered]@{
-  device_id=$DeviceId; allowed_root=(Resolve-Path $AllowedRoot).Path; git=$git; policy=$policy
+  device_id=$DeviceId; allowed_roots=$resolvedRoots; git=$git; policy=$policy
   gateway_state=$gatewayState; relay_state=$relayState; agent_state=$agentState
   secret_store=$secretStore; ca=(Join-Path $identity 'ca.pem')
   server_cert=(Join-Path $identity 'server.pem'); server_key=(Join-Path $identity 'server-key.pem')
   device_cert=(Join-Path $identity 'device.pem'); device_registry=(Join-Path $identity 'device-registry.json')
 }
-$config | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $LocalState 'config.json')
+Write-Utf8NoBom (Join-Path $LocalState 'config.json') ($config | ConvertTo-Json)
 if (-not (Test-Path $credPath)) {
   Write-Host 'Issuing first local MCP grant (stored with Windows DPAPI)...'
   $grant = & $gateway grant --state $gatewayState --actor 'local-pilot' --scope mcp --scope gateway.read --ttl-seconds $GrantTtlSeconds
@@ -54,11 +67,11 @@ if (-not (Test-Path $credPath)) {
   [pscredential]::new('vor-mcp',$secure) | Export-Clixml -Path $credPath
   $token = $null; $secure = $null
 }
-Write-Host 'Starting Vör Local Pilot...'
+Write-Host 'Starting Vor Local Pilot...'
 & (Join-Path $PSScriptRoot 'start-vor-local.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Vör start failed.' }
+if ($LASTEXITCODE -ne 0) { throw 'Vor start failed.' }
 & (Join-Path $PSScriptRoot 'status-vor-local.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Vör health verification failed.' }
+if ($LASTEXITCODE -ne 0) { throw 'Vor health verification failed.' }
 Write-Host ''
 Write-Host 'Bootstrap complete.'
 Write-Host 'MCP endpoint: http://127.0.0.1:8742/mcp'
