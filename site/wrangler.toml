@@ -1,0 +1,22 @@
+# Configuración de Cloudflare Pages para el sitio de Vör Commander.
+#
+# Wrangler busca este fichero y la carpeta functions/ en el directorio de
+# trabajo, así que los comandos se ejecutan con --cwd site (o desde site/):
+#
+#   npx wrangler pages dev   --cwd site
+#   npx wrangler pages deploy --cwd site
+#   npx wrangler d1 migrations apply vor-waitlist --remote --cwd site
+#
+# Con este fichero presente, es la fuente de verdad de los bindings del
+# proyecto de Pages. Los secretos (TURNSTILE_SECRET) no van aquí: siguen
+# definidos como secretos de Pages y no se tocan.
+
+name = "vor-commander-site"
+pages_build_output_dir = "."
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "WAITLIST_DB"
+database_name = "vor-waitlist"
+database_id = "3a2c1212-d3ac-4978-81c2-9fc1bfaa10ef"
+migrations_dir = "migrations"

@@ -291,7 +291,7 @@ async fn authorize_post(
         redirect_uri: form.redirect_uri.clone(),
         code_challenge: form.code_challenge,
         scopes,
-        actor_id: "chatgpt-owner".to_owned(),
+        actor_id: oauth_actor_id(&owner.actor_id, &form.client_id),
         expires_at_unix_ms: now.saturating_add(CODE_TTL_MS),
     };
     let Ok(mut codes) = state.oauth.codes.lock() else {
@@ -437,6 +437,16 @@ fn verify_pkce(verifier: &str, expected: &str) -> bool {
     URL_SAFE_NO_PAD.encode(digest) == expected
 }
 
+/// Actor recorded for grants issued through the OAuth flow: the owner who
+/// approved the consent screen plus the DCR `client_id` that received the
+/// token, so the device audit tells one connector (ChatGPT, Claude, ...) from
+/// another. Grants issued before this change keep their legacy
+/// `chatgpt-owner` actor and stay valid until they expire; nothing matches on
+/// that value, so no migration is needed.
+fn oauth_actor_id(owner_actor_id: &str, client_id: &str) -> String {
+    format!("{owner_actor_id}:oauth:{client_id}")
+}
+
 fn random_secret() -> String {
     URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>())
 }
@@ -502,5 +512,229 @@ mod tests {
             "native"
         ));
         assert!(!valid_redirect_uri("http://evil.example/callback", "web"));
+    }
+
+    mod security_sprint_1 {
+        use crate::build_router;
+        use axum::body::{Body, to_bytes};
+        use axum::http::{Request, StatusCode, header};
+        use serde_json::{Value, json};
+        use tokio_util::sync::CancellationToken;
+        use tower::ServiceExt;
+        use url::Url;
+        use vor_auth::GrantStore;
+
+        const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        const RESOURCE: &str = "https://mcp.vorcommander.app/mcp";
+
+        fn now() -> u64 {
+            super::super::now_unix_ms().unwrap()
+        }
+
+        async fn register(router: &axum::Router, name: &str, redirect: &str) -> String {
+            let body = json!({
+                "redirect_uris": [redirect],
+                "client_name": name,
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code"],
+                "response_types": ["code"],
+                "application_type": "web"
+            });
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/oauth/register")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::CREATED);
+            let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            value["client_id"].as_str().unwrap().to_owned()
+        }
+
+        fn authorize_form(client_id: &str, redirect: &str, owner_token: &str) -> String {
+            url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("response_type", "code")
+                .append_pair("client_id", client_id)
+                .append_pair("redirect_uri", redirect)
+                .append_pair("scope", "mcp gateway.read")
+                .append_pair("state", "sprint")
+                .append_pair("code_challenge", CHALLENGE)
+                .append_pair("code_challenge_method", "S256")
+                .append_pair("resource", RESOURCE)
+                .append_pair("owner_token", owner_token)
+                .finish()
+        }
+
+        async fn authorize(
+            router: &axum::Router,
+            form: String,
+            cross_site: bool,
+        ) -> axum::response::Response {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri("/oauth/authorize")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+            if cross_site {
+                request = request
+                    .header(header::ORIGIN, "https://evil.example")
+                    .header("sec-fetch-site", "cross-site");
+            }
+            router
+                .clone()
+                .oneshot(request.body(Body::from(form)).unwrap())
+                .await
+                .unwrap()
+        }
+
+        async fn full_flow(
+            router: &axum::Router,
+            name: &str,
+            redirect: &str,
+            owner_token: &str,
+        ) -> (String, String) {
+            let client_id = register(router, name, redirect).await;
+            let response = authorize(
+                router,
+                authorize_form(&client_id, redirect, owner_token),
+                false,
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::FOUND);
+            let location = response.headers()[header::LOCATION].to_str().unwrap();
+            let location = Url::parse(location).unwrap();
+            let code = location
+                .query_pairs()
+                .find(|(key, _)| key == "code")
+                .map(|(_, value)| value.into_owned())
+                .expect("authorization code");
+            let form = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("grant_type", "authorization_code")
+                .append_pair("code", &code)
+                .append_pair("redirect_uri", redirect)
+                .append_pair("client_id", &client_id)
+                .append_pair("code_verifier", VERIFIER)
+                .finish();
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/oauth/token")
+                        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                        .body(Body::from(form))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            (
+                client_id,
+                value["access_token"].as_str().unwrap().to_owned(),
+            )
+        }
+
+        /// Item 3 (gateway OAuth H2): every OAuth connector was recorded as the
+        /// same hardcoded actor `chatgpt-owner`, so the audit could not tell
+        /// Claude from ChatGPT. The actor must be derived from the approving
+        /// owner and the DCR client that received the token.
+        #[tokio::test]
+        async fn sec3_oauth_grants_carry_owner_and_client_specific_actor() {
+            let dir = tempfile::tempdir().unwrap();
+            let store = GrantStore::open(dir.path().join("auth.json")).unwrap();
+            let owner = store
+                .issue("local-pilot", ["mcp", "gateway.read"], 600_000, now())
+                .unwrap();
+            let router = build_router(store.clone(), CancellationToken::new()).unwrap();
+
+            let (chatgpt_client, chatgpt_token) = full_flow(
+                &router,
+                "ChatGPT",
+                "https://chatgpt.com/connector/oauth/callback",
+                owner.token(),
+            )
+            .await;
+            let (claude_client, claude_token) = full_flow(
+                &router,
+                "Claude",
+                "https://claude.ai/api/mcp/auth_callback",
+                owner.token(),
+            )
+            .await;
+
+            let chatgpt = store.validate(&chatgpt_token, "mcp", now()).unwrap();
+            let claude = store.validate(&claude_token, "mcp", now()).unwrap();
+            assert_ne!(
+                chatgpt.actor_id, claude.actor_id,
+                "two OAuth clients share one audit actor"
+            );
+            assert_eq!(
+                chatgpt.actor_id,
+                format!("local-pilot:oauth:{chatgpt_client}")
+            );
+            assert_eq!(
+                claude.actor_id,
+                format!("local-pilot:oauth:{claude_client}")
+            );
+        }
+
+        /// Item 3, compatibility: a grant issued before the change, with the
+        /// legacy `chatgpt-owner` actor, keeps working until it expires.
+        #[tokio::test]
+        async fn sec3_legacy_chatgpt_owner_grants_remain_valid() {
+            let dir = tempfile::tempdir().unwrap();
+            let store = GrantStore::open(dir.path().join("auth.json")).unwrap();
+            let pairing = store
+                .create_pairing(["mcp", "gateway.read"], 60_000, 600_000, now())
+                .unwrap();
+            let legacy = store
+                .redeem_pairing(pairing.code(), "chatgpt-owner", now())
+                .unwrap();
+            drop(store);
+            let reopened = GrantStore::open(dir.path().join("auth.json")).unwrap();
+            let record = reopened.validate(legacy.token(), "mcp", now()).unwrap();
+            assert_eq!(record.actor_id, "chatgpt-owner");
+        }
+
+        /// Item 9 (gateway OAuth H9): `authorize_post` has no Origin or
+        /// Sec-Fetch-Site check. A cross-site POST still cannot mint a code,
+        /// because the form requires the owner bootstrap token, which acts as
+        /// the anti-CSRF secret (`authorize_post` validates it before creating
+        /// the pairing). This test passes on the unfixed code: REFUTED.
+        #[tokio::test]
+        async fn sec9_cross_site_authorize_post_without_owner_token_mints_nothing() {
+            let dir = tempfile::tempdir().unwrap();
+            let store = GrantStore::open(dir.path().join("auth.json")).unwrap();
+            let reader = store
+                .issue("reader", ["mcp", "gateway.read"], 600_000, now())
+                .unwrap();
+            let router = build_router(store.clone(), CancellationToken::new()).unwrap();
+            let redirect = "https://evil.example/callback";
+            let client_id = register(&router, "ChatGPT", redirect).await;
+
+            for (owner_token, expected) in [
+                ("", StatusCode::UNAUTHORIZED),
+                ("guessed-token", StatusCode::UNAUTHORIZED),
+                (reader.token(), StatusCode::FORBIDDEN),
+            ] {
+                let response = authorize(
+                    &router,
+                    authorize_form(&client_id, redirect, owner_token),
+                    true,
+                )
+                .await;
+                assert_eq!(response.status(), expected);
+                assert!(response.headers().get(header::LOCATION).is_none());
+            }
+        }
     }
 }

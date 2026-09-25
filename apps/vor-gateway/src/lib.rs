@@ -654,7 +654,7 @@ impl CommanderServer {
 
     #[tool(
         name = "prepare_write",
-        description = "Prepare an approved filesystem write on an authorized remote device. This never writes data; it returns a device-policy approval challenge and an opaque request blob."
+        description = "Prepare an approved filesystem write on an authorized remote device. This never writes data; it returns a device-policy approval challenge and an opaque request blob. Give request_base64 and challenge to scripts/local/approve-vor-request.ps1, review and approve there, then pass its approval_base64 output with the same request to commit_write."
     )]
     async fn prepare_write(
         &self,
@@ -666,7 +666,7 @@ impl CommanderServer {
 
     #[tool(
         name = "prepare_edit",
-        description = "Prepare up to 20 ordered exact text replacements on an existing authorized file. The device reads and preserves the file encoding/line endings, returns a bounded unified diff and an ordinary signed filesystem.write challenge; this never writes data."
+        description = "Prepare up to 20 ordered exact text replacements on an existing authorized file. The device reads and preserves the file encoding/line endings, returns a bounded unified diff and an ordinary signed filesystem.write challenge; this never writes data. Give request_base64, challenge and diff_summary to scripts/local/approve-vor-request.ps1, then use its approval_base64 with commit_write."
     )]
     async fn prepare_edit(
         &self,
@@ -690,7 +690,7 @@ impl CommanderServer {
 
     #[tool(
         name = "prepare_terminal",
-        description = "Prepare a bounded terminal.exec request on an authorized remote device. This never starts a process; it returns a device-policy approval challenge and an opaque request blob."
+        description = "Prepare a bounded terminal.exec request on an authorized remote device. This never starts a process; it returns a device-policy approval challenge and an opaque request blob. Give request_base64 and challenge to scripts/local/approve-vor-request.ps1, review and approve there, then pass its approval_base64 output with the same request to commit_terminal."
     )]
     async fn prepare_terminal(
         &self,
@@ -803,7 +803,7 @@ impl CommanderServer {
             .map_err(|_| rmcp::ErrorData::internal_error("failed to encode edit request", None))?;
         let result = self
             .remote_links()?
-            .dispatch_action(&input.device_id, request, Duration::from_secs(15))
+            .dispatch_action(&input.device_id, request, MCP_REMOTE_ACTION_TIMEOUT)
             .await
             .map_err(remote_tool_error)?;
         if result.status != "approval_required" {
@@ -872,7 +872,7 @@ impl CommanderServer {
         )?;
         let request_base64 = STANDARD.encode(request.encode_to_vec());
         let result = links
-            .dispatch_action(&input.device_id, request, Duration::from_secs(15))
+            .dispatch_action(&input.device_id, request, MCP_REMOTE_ACTION_TIMEOUT)
             .await
             .map_err(remote_tool_error)?;
 
@@ -939,7 +939,12 @@ impl CommanderServer {
 
         let links = self.remote_links()?;
         let result = links
-            .dispatch_approved_action(&input.device_id, request, approval, Duration::from_secs(15))
+            .dispatch_approved_action(
+                &input.device_id,
+                request,
+                approval,
+                MCP_REMOTE_ACTION_TIMEOUT,
+            )
             .await
             .map_err(remote_tool_error)?;
         render_tool_output(result)
@@ -967,7 +972,7 @@ impl CommanderServer {
         )?;
         let request_base64 = STANDARD.encode(request.encode_to_vec());
         let result = links
-            .dispatch_action(&input.device_id, request, Duration::from_secs(15))
+            .dispatch_action(&input.device_id, request, MCP_REMOTE_ACTION_TIMEOUT)
             .await
             .map_err(remote_tool_error)?;
 
@@ -1099,7 +1104,7 @@ impl CommanderServer {
         )
         .map_err(|_| rmcp::ErrorData::internal_error("failed to build remote request", None))?;
         let result = links
-            .dispatch_action(device_id, request, Duration::from_secs(15))
+            .dispatch_action(device_id, request, MCP_REMOTE_ACTION_TIMEOUT)
             .await
             .map_err(remote_tool_error)?;
         render_tool_output(result)
@@ -1221,6 +1226,9 @@ fn grant_from_mcp_extensions(extensions: &McpExtensions) -> Result<GrantContext,
 }
 
 const MAX_MCP_WRITE_BYTES: usize = 1024 * 1024;
+// This is a transport liveness guard, not an action latency contract. Loaded
+// Windows hosts can pause file and audit I/O long enough to exceed 15 seconds.
+const MCP_REMOTE_ACTION_TIMEOUT: Duration = Duration::from_secs(120);
 const WRITE_REQUEST_TTL_MS: u64 = 180_000;
 
 fn build_remote_write_request(
@@ -2869,7 +2877,11 @@ audit:
     }
 
     fn tool_text_json(response: &Value) -> Value {
-        serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
+        let text = response["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("MCP response has no tool result: {response}"));
+        serde_json::from_str(text)
+            .unwrap_or_else(|error| panic!("MCP tool result is not JSON ({error}): {response}"))
     }
 
     fn sign_prepared(prepared: &Value, approver_id: &str, signing: &SigningKey) -> String {

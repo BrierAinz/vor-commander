@@ -30,10 +30,32 @@ async fn run() -> Result<(), Box<dyn Error>> {
     match args.first().map(String::as_str) {
         Some("serve") => serve_command(&args[1..]).await,
         Some("grant") => grant_command(&args[1..]),
+        Some("revoke") => revoke_command(&args[1..]),
         Some("device-id") => device_id_command(&args[1..]),
         Some("--help" | "-h") | None => print_help(),
         Some(other) => Err(format!("unsupported command: {other}").into()),
     }
+}
+
+fn revoke_command(args: &[String]) -> Result<(), Box<dyn Error>> {
+    let mut state_path = PathBuf::from(DEFAULT_STATE);
+    let mut grant_id = None::<String>;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--state" => state_path = PathBuf::from(next_value(args, &mut index, "--state")?),
+            "--grant-id" => grant_id = Some(next_value(args, &mut index, "--grant-id")?.to_owned()),
+            other => return Err(format!("unsupported revoke option: {other}").into()),
+        }
+        index += 1;
+    }
+    let grant_id = grant_id.ok_or("revoke requires --grant-id")?;
+    if !GrantStore::open(state_path)?.revoke(&grant_id)? {
+        return Err("grant was not found".into());
+    }
+    println!("revoked=true");
+    println!("grant_id={grant_id}");
+    Ok(())
 }
 
 async fn serve_command(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -134,6 +156,7 @@ fn print_help() -> Result<(), Box<dyn Error>> {
     println!(
         "  vor-gateway grant --actor ID --scope SCOPE [--scope SCOPE] [--ttl-seconds N] [--state PATH]"
     );
+    println!("  vor-gateway revoke --grant-id ID [--state PATH]");
     println!();
     println!("Defaults:");
     println!("  bind: {DEFAULT_BIND}");

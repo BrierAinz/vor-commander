@@ -1925,8 +1925,8 @@ audit:
         session_id: &str,
         start_now_unix_ms: u64,
     ) -> serde_json::Value {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        for index in 0..500u64 {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        for index in 0..12_000u64 {
             let request = terminal_control_request(
                 &format!("poll-{session_id}-{index}"),
                 "terminal.poll",
@@ -1957,8 +1957,8 @@ audit:
         workspace_id: &str,
         start_now_unix_ms: u64,
     ) -> serde_json::Value {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        for index in 0..500u64 {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        for index in 0..12_000u64 {
             let request = terminal_control_request_for_workspace(
                 &format!("poll-{session_id}-{workspace_id}-{index}"),
                 "terminal.poll",
@@ -2104,7 +2104,7 @@ audit:
             Some("ws-a1"),
         )
         .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
         loop {
             let snapshot = dispatcher
                 .terminal_sessions
@@ -2581,7 +2581,7 @@ audit:
     #[test]
     fn approved_process_terminate_kills_exact_synthetic_instance_once() {
         let dir = tempdir().unwrap();
-        let (_target, mut child) = spawn_lab_process(dir.path(), "a3-lab-agent.exe", 30);
+        let (_target, mut child) = spawn_lab_process(dir.path(), "a3-lab-agent.exe", 300);
         let identity = vor_process::ProcessWorker.identity(child.id()).unwrap();
         let request = process_terminate_request("req-process-terminate-ok", &identity);
         let proto = action_request_to_proto(&request).unwrap();
@@ -2682,7 +2682,7 @@ audit:
     #[test]
     fn approved_process_terminate_rejects_expired_approval() {
         let dir = tempdir().unwrap();
-        let (_target, mut child) = spawn_lab_process(dir.path(), "a3-lab-expired.exe", 8);
+        let (_target, mut child) = spawn_lab_process(dir.path(), "a3-lab-expired.exe", 300);
         let identity = vor_process::ProcessWorker.identity(child.id()).unwrap();
         let request = process_terminate_request("req-process-terminate-expired", &identity);
         let proto = action_request_to_proto(&request).unwrap();

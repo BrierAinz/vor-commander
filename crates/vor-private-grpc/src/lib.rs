@@ -88,6 +88,9 @@ struct DeviceSession {
 
 type PendingResultMap = HashMap<(String, String), oneshot::Sender<ActionResult>>;
 
+/// Upper bound of in-flight actions the hub keeps per device.
+pub const MAX_PENDING_ACTIONS_PER_DEVICE: usize = 256;
+
 #[derive(Clone, Default)]
 pub struct PrivateLinkHub {
     devices: Arc<RwLock<HashMap<String, DeviceSession>>>,
@@ -151,24 +154,12 @@ impl PrivateLinkHub {
         {
             return Err(PrivateLinkError::RemoteActionNotAllowed);
         }
-        let session = self
-            .devices
-            .read()
-            .await
-            .get(device_id)
-            .cloned()
-            .ok_or(PrivateLinkError::DeviceOffline)?;
-        let key = (device_id.to_owned(), request.request_id.clone());
-        let (result_sender, result_receiver) = oneshot::channel();
-        if self
-            .pending
-            .write()
-            .await
-            .insert(key.clone(), result_sender)
-            .is_some()
-        {
-            return Err(PrivateLinkError::DuplicateRequest);
-        }
+        let expires_at_unix_ms = request
+            .expires_at
+            .as_ref()
+            .and_then(timestamp_to_ms)
+            .ok_or(PrivateLinkError::ActionExpired)?;
+        let request_id = request.request_id.clone();
         let frame = RelayFrame {
             wire_version: WIRE_VERSION,
             message_id: format!("action-{:032x}", rand::random::<u128>()),
@@ -177,21 +168,8 @@ impl PrivateLinkHub {
             nonce: rand::random::<[u8; 16]>().to_vec(),
             payload: Some(Payload::ActionRequest(request)),
         };
-        if session.sender.send(Ok(frame)).await.is_err() {
-            self.pending.write().await.remove(&key);
-            return Err(PrivateLinkError::DeviceOffline);
-        }
-        match tokio::time::timeout(timeout, result_receiver).await {
-            Ok(Ok(result)) => Ok(result),
-            Ok(Err(_)) => {
-                self.pending.write().await.remove(&key);
-                Err(PrivateLinkError::DeviceOffline)
-            }
-            Err(_) => {
-                self.pending.write().await.remove(&key);
-                Err(PrivateLinkError::ActionTimeout)
-            }
-        }
+        self.send_and_wait(device_id, request_id, expires_at_unix_ms, frame, timeout)
+            .await
     }
 
     pub async fn dispatch_approved_action(
@@ -215,24 +193,7 @@ impl PrivateLinkHub {
         if !remote_approved_action_allowed(&canonical.envelope.action) {
             return Err(PrivateLinkError::RemoteActionNotAllowed);
         }
-        let session = self
-            .devices
-            .read()
-            .await
-            .get(device_id)
-            .cloned()
-            .ok_or(PrivateLinkError::DeviceOffline)?;
-        let key = (device_id.to_owned(), request.request_id.clone());
-        let (result_sender, result_receiver) = oneshot::channel();
-        if self
-            .pending
-            .write()
-            .await
-            .insert(key.clone(), result_sender)
-            .is_some()
-        {
-            return Err(PrivateLinkError::DuplicateRequest);
-        }
+        let request_id = request.request_id.clone();
         let frame = RelayFrame {
             wire_version: WIRE_VERSION,
             message_id: format!("approved-action-{:032x}", rand::random::<u128>()),
@@ -244,15 +205,73 @@ impl PrivateLinkHub {
                 approval: Some(approval),
             })),
         };
-        if session.sender.send(Ok(frame)).await.is_err() {
-            self.pending.write().await.remove(&key);
-            return Err(PrivateLinkError::DeviceOffline);
+        self.send_and_wait(
+            device_id,
+            request_id,
+            canonical.envelope.expires_at_unix_ms,
+            frame,
+            timeout,
+        )
+        .await
+    }
+
+    /// Registers the pending slot, sends the frame and waits for the result.
+    ///
+    /// The caller's `timeout` bounds the whole operation, including the wait for
+    /// room in the device channel, and the pending map is capped per device so a
+    /// device that stops answering cannot make the hub grow without limit.
+    /// Requests that are already expired never leave the hub: the device would
+    /// reject the frame anyway and tear down its session while doing so.
+    async fn send_and_wait(
+        &self,
+        device_id: &str,
+        request_id: String,
+        expires_at_unix_ms: u64,
+        frame: RelayFrame,
+        timeout: Duration,
+    ) -> Result<ActionResult, PrivateLinkError> {
+        if expires_at_unix_ms <= now_unix_ms()? {
+            return Err(PrivateLinkError::ActionExpired);
         }
-        match tokio::time::timeout(timeout, result_receiver).await {
+        let session = self
+            .devices
+            .read()
+            .await
+            .get(device_id)
+            .cloned()
+            .ok_or(PrivateLinkError::DeviceOffline)?;
+        let key = (device_id.to_owned(), request_id);
+        let (result_sender, result_receiver) = oneshot::channel();
+        {
+            let mut pending = self.pending.write().await;
+            if pending.contains_key(&key) {
+                return Err(PrivateLinkError::DuplicateRequest);
+            }
+            let in_flight = pending
+                .keys()
+                .filter(|(pending_device, _)| pending_device == device_id)
+                .count();
+            if in_flight >= MAX_PENDING_ACTIONS_PER_DEVICE {
+                return Err(PrivateLinkError::TooManyPendingActions);
+            }
+            pending.insert(key.clone(), result_sender);
+        }
+        let outcome = tokio::time::timeout(timeout, async {
+            session
+                .sender
+                .send(Ok(frame))
+                .await
+                .map_err(|_| PrivateLinkError::DeviceOffline)?;
+            result_receiver
+                .await
+                .map_err(|_| PrivateLinkError::DeviceOffline)
+        })
+        .await;
+        match outcome {
             Ok(Ok(result)) => Ok(result),
-            Ok(Err(_)) => {
+            Ok(Err(error)) => {
                 self.pending.write().await.remove(&key);
-                Err(PrivateLinkError::DeviceOffline)
+                Err(error)
             }
             Err(_) => {
                 self.pending.write().await.remove(&key);
@@ -605,9 +624,7 @@ pub async fn run_device_dispatch(
                     Some(Payload::ActionRequest(request)) => {
                         let local_dispatcher = dispatcher.clone();
                         let result = tokio::task::spawn_blocking(move || {
-                            let mut dispatcher = local_dispatcher
-                                .lock()
-                                .map_err(|_| PrivateLinkError::DispatcherUnavailable)?;
+                            let mut dispatcher = lock_dispatcher(&local_dispatcher);
                             Ok::<_, PrivateLinkError>(dispatcher.dispatch_proto_report(&request)?)
                         }).await??;
                         let result_frame = device_outbound_frame(
@@ -620,9 +637,7 @@ pub async fn run_device_dispatch(
                     Some(Payload::ApprovedActionRequest(approved)) => {
                         let local_dispatcher = dispatcher.clone();
                         let result = tokio::task::spawn_blocking(move || {
-                            let mut dispatcher = local_dispatcher
-                                .lock()
-                                .map_err(|_| PrivateLinkError::DispatcherUnavailable)?;
+                            let mut dispatcher = lock_dispatcher(&local_dispatcher);
                             Ok::<_, PrivateLinkError>(
                                 dispatcher.dispatch_approved_proto_report(&approved)?
                             )
@@ -764,16 +779,58 @@ fn timestamp_from_ms(value: u64) -> Result<prost_types::Timestamp, PrivateLinkEr
     Ok(prost_types::Timestamp { seconds, nanos })
 }
 
+fn timestamp_to_ms(value: &prost_types::Timestamp) -> Option<u64> {
+    let seconds = u64::try_from(value.seconds).ok()?;
+    let nanos = u64::try_from(value.nanos).ok()?;
+    seconds.checked_mul(1000)?.checked_add(nanos / 1_000_000)
+}
+
+/// Device identifiers are map keys and certificate subjects today, but they are
+/// also the kind of value that ends up in a file name or a URL path. Only accept
+/// identifiers that cannot alias a path segment (`.`, `..`, `.hidden`,
+/// `name.`) or a reserved Windows device name (`CON`, `NUL.txt`, `COM1`).
 fn validate_device_id(value: &str) -> Result<(), PrivateLinkError> {
-    if value.is_empty()
-        || value.len() > 128
-        || !value
-            .bytes()
+    let bytes = value.as_bytes();
+    let (Some(first), Some(last)) = (bytes.first(), bytes.last()) else {
+        return Err(PrivateLinkError::InvalidDeviceId);
+    };
+    if value.len() > 128
+        || !first.is_ascii_alphanumeric()
+        || !last.is_ascii_alphanumeric()
+        || value.contains("..")
+        || !bytes
+            .iter()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        || is_reserved_windows_name(value)
     {
         return Err(PrivateLinkError::InvalidDeviceId);
     }
     Ok(())
+}
+
+fn is_reserved_windows_name(value: &str) -> bool {
+    let stem = value
+        .split('.')
+        .next()
+        .unwrap_or(value)
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+}
+
+/// A panic while the dispatcher lock is held must not brick the device. The
+/// one-shot guarantees (approval claims, execution recovery state) live in the
+/// on-disk ledger, not in the in-memory dispatcher, so recovering the guard
+/// cannot re-enable a consumed approval.
+fn lock_dispatcher(
+    dispatcher: &Mutex<ReadOnlyDispatcher>,
+) -> std::sync::MutexGuard<'_, ReadOnlyDispatcher> {
+    dispatcher.lock().unwrap_or_else(|poisoned| {
+        dispatcher.clear_poison();
+        poisoned.into_inner()
+    })
 }
 
 #[derive(Debug, Error)]
@@ -800,6 +857,10 @@ pub enum PrivateLinkError {
     DuplicateRequest,
     #[error("remote action timed out")]
     ActionTimeout,
+    #[error("action request is expired or has no expiry")]
+    ActionExpired,
+    #[error("too many actions are already pending for this device")]
+    TooManyPendingActions,
     #[error("private device client configuration is invalid")]
     InvalidClientConfig,
     #[error("private device stream closed")]
@@ -1340,6 +1401,7 @@ audit:
 
     #[tokio::test]
     async fn reconnecting_private_dispatch_recovers_when_server_becomes_available() {
+        let roundtrip_timeout = Duration::from_secs(120);
         let fixture = mtls_fixture("device-1");
         let data = tempdir().unwrap();
         let file = data.path().join("reconnect.txt");
@@ -1374,7 +1436,7 @@ audit:
 
         let (hub, server_cancel, server_task) = spawn_server_with_hub_on(&fixture, address).await;
 
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(roundtrip_timeout, async {
             loop {
                 if hub.connected_devices().await == vec!["device-1".to_owned()] {
                     break;
@@ -1389,7 +1451,7 @@ audit:
             .dispatch_action(
                 "device-1",
                 remote_request("filesystem.read", &file.to_string_lossy()),
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -1397,13 +1459,13 @@ audit:
         assert_eq!(result.output, b"reconnected");
 
         client_cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), client_task)
+        tokio::time::timeout(roundtrip_timeout, client_task)
             .await
             .unwrap()
             .unwrap()
             .unwrap();
         server_cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), server_task)
+        tokio::time::timeout(roundtrip_timeout, server_task)
             .await
             .unwrap()
             .unwrap();
@@ -1411,6 +1473,9 @@ audit:
 
     #[tokio::test]
     async fn read_only_dispatch_roundtrip_over_mtls() {
+        // These bounds only keep a broken test from hanging; transport latency is
+        // not part of the behavior asserted by this end-to-end correctness test.
+        let roundtrip_timeout = Duration::from_secs(120);
         let fixture = mtls_fixture("device-1");
         let data = tempdir().unwrap();
         let file = data.path().join("remote.txt");
@@ -1443,7 +1508,7 @@ audit:
             run_device_dispatch(client_config, client_dispatcher, client_shutdown).await
         });
 
-        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::time::timeout(roundtrip_timeout, async {
             loop {
                 if hub.connected_devices().await == vec!["device-1".to_owned()] {
                     break;
@@ -1458,7 +1523,7 @@ audit:
             .dispatch_action(
                 "device-1",
                 remote_request("filesystem.read", &file.to_string_lossy()),
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -1481,7 +1546,7 @@ audit:
             .dispatch_action(
                 "device-1",
                 remote_request("filesystem.read", r"C:\Windows\win.ini"),
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -1492,12 +1557,7 @@ audit:
         let (write_request, write_approval) =
             approved_write_request(&write_target, b"after", b"before", &signing);
         let written = hub
-            .dispatch_approved_action(
-                "device-1",
-                write_request,
-                write_approval,
-                Duration::from_secs(2),
-            )
+            .dispatch_approved_action("device-1", write_request, write_approval, roundtrip_timeout)
             .await
             .unwrap();
         assert_eq!(written.status, "ok");
@@ -1511,7 +1571,7 @@ audit:
                 "device-1",
                 terminal_request,
                 terminal_approval,
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -1520,13 +1580,13 @@ audit:
         assert_eq!(started["state"], "running");
         let session_id = started["session_id"].as_str().unwrap().to_owned();
 
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let deadline = tokio::time::Instant::now() + roundtrip_timeout;
         loop {
             let polled = hub
                 .dispatch_action(
                     "device-1",
                     terminal_poll_request(&session_id),
-                    Duration::from_secs(2),
+                    roundtrip_timeout,
                 )
                 .await
                 .unwrap();
@@ -1553,13 +1613,13 @@ audit:
         }
 
         client_cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), client_task)
+        tokio::time::timeout(roundtrip_timeout, client_task)
             .await
             .unwrap()
             .unwrap()
             .unwrap();
         server_cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), server_task)
+        tokio::time::timeout(roundtrip_timeout, server_task)
             .await
             .unwrap()
             .unwrap();
@@ -1580,5 +1640,511 @@ audit:
         let debug = format!("{config:?}");
         assert!(debug.contains("<redacted>"));
         assert!(!debug.contains("SUPER-SECRET-PRIVATE-KEY"));
+    }
+
+    /// Security sprint 1: regression tests that drive the real hub, the real
+    /// mTLS device loop and the real dispatcher/ledger together.
+    mod security_sprint_1 {
+        use super::*;
+
+        fn device_config(fixture: &MtlsFixture, address: SocketAddr) -> PrivateDeviceClientConfig {
+            PrivateDeviceClientConfig {
+                endpoint: format!("https://{address}"),
+                server_name: "localhost".into(),
+                device_id: "device-1".into(),
+                ca_pem: fixture.ca_pem.as_bytes().to_vec(),
+                device_cert_pem: fixture.device_cert_pem.as_bytes().to_vec(),
+                device_key_pem: fixture.device_key_pem.as_bytes().to_vec(),
+                agent_version: "0.1.0-security-sprint".into(),
+                heartbeat_interval: Duration::from_secs(30),
+                replay_capacity: 4096,
+            }
+        }
+
+        async fn wait_connected(hub: &PrivateLinkHub) {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    if hub.connected_devices().await == vec!["device-1".to_owned()] {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("device did not connect to the hub");
+        }
+
+        fn read_request_expiring_at(target: &str, expires_at_unix_ms: u64) -> v1::ActionRequest {
+            let request = ActionRequest::seal(ActionEnvelope {
+                request_id: format!("req-expiry-{:032x}", rand::random::<u128>()),
+                organization_id: "org-1".into(),
+                actor_id: "gateway-test".into(),
+                device_id: "device-1".into(),
+                action: "filesystem.read".into(),
+                target: target.into(),
+                parameters: BTreeMap::new(),
+                requested_capabilities: vec![],
+                expires_at_unix_ms,
+                nonce: rand::random::<[u8; 16]>().to_vec(),
+            })
+            .unwrap();
+            action_request_to_proto(&request).unwrap()
+        }
+
+        fn expired_approved_write(
+            target: &Path,
+            content: &[u8],
+            expected_target: &[u8],
+            signing: &SigningKey,
+        ) -> (v1::ActionRequest, v1::ApprovalGrant) {
+            let now = now_unix_ms().unwrap();
+            let mut parameters = BTreeMap::new();
+            parameters.insert(
+                "content_base64".into(),
+                serde_json::Value::String(STANDARD.encode(content)),
+            );
+            parameters.insert(
+                "content_sha256".into(),
+                serde_json::Value::String(sha256_hex_bytes(content)),
+            );
+            parameters.insert(
+                "expected_target_sha256".into(),
+                serde_json::Value::String(sha256_hex_bytes(expected_target)),
+            );
+            let request = ActionRequest::seal(ActionEnvelope {
+                request_id: format!("req-expired-write-{:032x}", rand::random::<u128>()),
+                organization_id: "org-1".into(),
+                actor_id: "gateway-test".into(),
+                device_id: "device-1".into(),
+                action: "filesystem.write".into(),
+                target: target.to_string_lossy().into_owned(),
+                parameters,
+                requested_capabilities: vec![],
+                expires_at_unix_ms: now - 1_000,
+                nonce: rand::random::<[u8; 16]>().to_vec(),
+            })
+            .unwrap();
+            let decision = PolicyDecision {
+                request_id: request.envelope.request_id.clone(),
+                kind: PolicyDecisionKind::Approval,
+                policy_id: "private-dispatch-test".into(),
+                reason_code: "filesystem_rule".into(),
+                required_capability: None,
+                envelope_digest: request.envelope_digest,
+            };
+            // The approval was signed while the request was still valid.
+            let challenge =
+                ApprovalChallenge::issue(&request, &decision, now - 10_000, now - 5_000).unwrap();
+            let approval = sign_approval(challenge, "operator-1", signing).unwrap();
+            (
+                action_request_to_proto(&request).unwrap(),
+                approval_grant_to_proto(&approval).unwrap(),
+            )
+        }
+
+        /// Item 1 (vor-private-grpc #4): the hub purges `pending` when the
+        /// caller's timeout fires. The same signed ApprovalGrant is then sent
+        /// again through the hub; the device must not apply the effect twice.
+        #[tokio::test]
+        async fn sec1_signed_grant_executes_once_even_after_hub_timeout_purges_pending() {
+            let fixture = mtls_fixture("device-1");
+            let data = tempdir().unwrap();
+            let target = data.path().join("replay.txt");
+            std::fs::write(&target, b"original").unwrap();
+            let signing = SigningKey::from_bytes(&[21; 32]);
+            let dispatcher = test_dispatcher(data.path());
+            dispatcher
+                .lock()
+                .unwrap()
+                .add_trusted_approver("operator-1", signing.verifying_key().to_bytes())
+                .unwrap();
+            let (address, hub, server_cancel, server_task) = spawn_server_with_hub(&fixture).await;
+            let client_cancel = CancellationToken::new();
+            let client_task = tokio::spawn(run_device_dispatch(
+                device_config(&fixture, address),
+                dispatcher.clone(),
+                client_cancel.clone(),
+            ));
+            wait_connected(&hub).await;
+
+            let (request, grant) = approved_write_request(&target, b"first", b"original", &signing);
+            // A timeout far shorter than the mTLS round trip: the hub gives up
+            // and purges its pending entry while the device still executes.
+            let first = hub
+                .dispatch_approved_action(
+                    "device-1",
+                    request.clone(),
+                    grant.clone(),
+                    Duration::from_millis(1),
+                )
+                .await;
+            assert!(
+                matches!(first, Err(PrivateLinkError::ActionTimeout)) || first.is_ok(),
+                "unexpected first dispatch outcome: {first:?}"
+            );
+            tokio::time::timeout(Duration::from_secs(20), async {
+                while std::fs::read(&target).unwrap() != b"first" {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("device never applied the first approved write");
+            assert!(
+                hub.pending.read().await.is_empty(),
+                "pending was not purged"
+            );
+            // The device holds the dispatcher lock for the whole approved
+            // dispatch, so taking it proves the first execution has finished.
+            // The late first result is then delivered to a hub with no pending
+            // slot and dropped; give it time to arrive so that it cannot be
+            // mistaken for the answer to the replay below.
+            drop(dispatcher.lock().unwrap());
+            tokio::time::sleep(Duration::from_millis(500)).await;
+
+            // Restore the precondition so that a replay *could* succeed if the
+            // one-shot claim were missing.
+            std::fs::write(&target, b"original").unwrap();
+            let replay = hub
+                .dispatch_approved_action("device-1", request, grant, Duration::from_secs(20))
+                .await
+                .expect("device answers the replay with a failure result");
+            assert_eq!(replay.status, "approval_replayed");
+            assert_eq!(std::fs::read(&target).unwrap(), b"original");
+
+            client_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), client_task).await;
+            server_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), server_task).await;
+        }
+
+        /// Item 2 (vor-private-grpc #5), effect half: an expired ActionRequest
+        /// must produce no effect. The device-side broker already enforces
+        /// this (`vor-core` `authorize_at`/`consume_approval_at` call
+        /// `request.verify(now)`), and the device loop rejects the expired
+        /// frame before dispatching it (`verify_frame_at`). This test passes on
+        /// the unfixed hub and documents that the effect is prevented below it.
+        #[tokio::test]
+        async fn sec2_expired_requests_have_no_effect_on_the_device() {
+            let fixture = mtls_fixture("device-1");
+            let data = tempdir().unwrap();
+            let readable = data.path().join("readable.txt");
+            std::fs::write(&readable, b"secret-content").unwrap();
+            let target = data.path().join("expired-write.txt");
+            std::fs::write(&target, b"original").unwrap();
+            let signing = SigningKey::from_bytes(&[22; 32]);
+            let dispatcher = test_dispatcher(data.path());
+            dispatcher
+                .lock()
+                .unwrap()
+                .add_trusted_approver("operator-1", signing.verifying_key().to_bytes())
+                .unwrap();
+
+            // Device layer on its own: the dispatcher refuses the expired
+            // approved write and writes nothing.
+            let (request, grant) =
+                expired_approved_write(&target, b"should-not-land", b"original", &signing);
+            let direct =
+                dispatcher
+                    .lock()
+                    .unwrap()
+                    .dispatch_approved_proto(&v1::ApprovedActionRequest {
+                        request: Some(request.clone()),
+                        approval: Some(grant.clone()),
+                    });
+            assert!(direct.is_err(), "dispatcher accepted an expired request");
+            assert_eq!(std::fs::read(&target).unwrap(), b"original");
+
+            // Full path through the hub and the mTLS device loop.
+            let (address, hub, server_cancel, server_task) = spawn_server_with_hub(&fixture).await;
+            let client_cancel = CancellationToken::new();
+            let client_task = tokio::spawn(run_device_dispatch(
+                device_config(&fixture, address),
+                dispatcher.clone(),
+                client_cancel.clone(),
+            ));
+            wait_connected(&hub).await;
+            let audit_before = dispatcher.lock().unwrap().audit_sequence();
+
+            let expired_write = hub
+                .dispatch_approved_action("device-1", request, grant, Duration::from_secs(3))
+                .await;
+            assert!(
+                !matches!(&expired_write, Ok(result) if result.status == "ok"),
+                "expired write reported success: {expired_write:?}"
+            );
+            assert_eq!(std::fs::read(&target).unwrap(), b"original");
+            assert_eq!(dispatcher.lock().unwrap().audit_sequence(), audit_before);
+
+            client_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), client_task).await;
+            server_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), server_task).await;
+        }
+
+        /// Item 2 (vor-private-grpc #5), availability half: the hub forwarded
+        /// expired requests, and the device answered the expired frame by
+        /// tearing down its whole session. The hub must reject them up front
+        /// and the device must stay connected.
+        #[tokio::test]
+        async fn sec2_expired_requests_are_rejected_by_the_hub_and_keep_the_session() {
+            let fixture = mtls_fixture("device-1");
+            let data = tempdir().unwrap();
+            let readable = data.path().join("readable.txt");
+            std::fs::write(&readable, b"still-connected").unwrap();
+            let target = data.path().join("expired-write.txt");
+            std::fs::write(&target, b"original").unwrap();
+            let signing = SigningKey::from_bytes(&[23; 32]);
+            let dispatcher = test_dispatcher(data.path());
+            dispatcher
+                .lock()
+                .unwrap()
+                .add_trusted_approver("operator-1", signing.verifying_key().to_bytes())
+                .unwrap();
+            let (address, hub, server_cancel, server_task) = spawn_server_with_hub(&fixture).await;
+            let client_cancel = CancellationToken::new();
+            let client_task = tokio::spawn(run_device_dispatch(
+                device_config(&fixture, address),
+                dispatcher.clone(),
+                client_cancel.clone(),
+            ));
+            wait_connected(&hub).await;
+
+            let now = now_unix_ms().unwrap();
+            let expired_read = hub
+                .dispatch_action(
+                    "device-1",
+                    read_request_expiring_at(&readable.to_string_lossy(), now - 1_000),
+                    Duration::from_secs(3),
+                )
+                .await;
+            assert!(
+                matches!(expired_read, Err(PrivateLinkError::ActionExpired)),
+                "expired read: {expired_read:?}"
+            );
+            let (request, grant) =
+                expired_approved_write(&target, b"should-not-land", b"original", &signing);
+            let expired_write = hub
+                .dispatch_approved_action("device-1", request, grant, Duration::from_secs(3))
+                .await;
+            assert!(
+                matches!(expired_write, Err(PrivateLinkError::ActionExpired)),
+                "expired write: {expired_write:?}"
+            );
+
+            // The session survives: a valid request still round-trips.
+            assert_eq!(hub.connected_devices().await, vec!["device-1".to_owned()]);
+            let valid = hub
+                .dispatch_action(
+                    "device-1",
+                    remote_request("filesystem.read", &readable.to_string_lossy()),
+                    Duration::from_secs(20),
+                )
+                .await
+                .expect("device must still be connected after expired requests");
+            assert_eq!(valid.status, "ok");
+            assert_eq!(valid.output, b"still-connected");
+
+            client_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), client_task).await;
+            server_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), server_task).await;
+        }
+
+        /// Item 5 (vor-private-grpc #6/#17): identifiers that alias paths or
+        /// Windows device names are rejected by every entry point of the crate.
+        #[tokio::test]
+        async fn sec5_device_ids_that_alias_paths_or_devices_are_rejected() {
+            let fixture = mtls_fixture("device-1");
+            let data = tempdir().unwrap();
+            let dispatcher = test_dispatcher(data.path());
+            for bad in [
+                ".",
+                "..",
+                "...",
+                ".hidden",
+                "trailing.",
+                "CON",
+                "con",
+                "Nul",
+                "PRN",
+                "aux",
+                "COM1",
+                "lpt9",
+                "con.txt",
+                "NUL.log",
+                "a b",
+                "a/b",
+                r"a\b",
+                "",
+            ] {
+                let registry = DeviceCertificateRegistry::from_certificates([(
+                    bad.to_owned(),
+                    fixture.device_cert_der.clone(),
+                )]);
+                assert!(
+                    matches!(registry, Err(PrivateLinkError::InvalidDeviceId)),
+                    "registry accepted {bad:?}"
+                );
+                let mut config = device_config(&fixture, "127.0.0.1:9".parse().unwrap());
+                config.device_id = bad.to_owned();
+                let result = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    run_device_dispatch(config, dispatcher.clone(), CancellationToken::new()),
+                )
+                .await
+                .expect("validation must fail before any network I/O");
+                assert!(
+                    matches!(result, Err(PrivateLinkError::InvalidDeviceId)),
+                    "client accepted {bad:?}: {result:?}"
+                );
+            }
+            for good in ["device-1", "123", "ainz-pc.local", "a", "COM10", "console"] {
+                assert!(validate_device_id(good).is_ok(), "rejected {good:?}");
+            }
+        }
+
+        /// Item 6 (vor-private-grpc #1): a device that stops answering must not
+        /// let the hub accumulate unbounded pending entries.
+        #[tokio::test]
+        async fn sec6_pending_actions_per_device_are_capped() {
+            let fixture = mtls_fixture("device-1");
+            let data = tempdir().unwrap();
+            let readable = data.path().join("readable.txt");
+            std::fs::write(&readable, b"cap").unwrap();
+            let dispatcher = test_dispatcher(data.path());
+            let (address, hub, server_cancel, server_task) = spawn_server_with_hub(&fixture).await;
+            let client_cancel = CancellationToken::new();
+            let client_task = tokio::spawn(run_device_dispatch(
+                device_config(&fixture, address),
+                dispatcher.clone(),
+                client_cancel.clone(),
+            ));
+            wait_connected(&hub).await;
+
+            // Wedge the device: its dispatcher lock is held, so it never answers.
+            let wedge = dispatcher.clone();
+            let (wedged_tx, wedged_rx) = std::sync::mpsc::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+            let wedge_thread = std::thread::spawn(move || {
+                let _guard = wedge.lock().unwrap();
+                wedged_tx.send(()).unwrap();
+                let _ = release_rx.recv();
+            });
+            wedged_rx.recv().unwrap();
+
+            let mut stuck = Vec::new();
+            for _ in 0..MAX_PENDING_ACTIONS_PER_DEVICE {
+                let hub = hub.clone();
+                let request = remote_request("filesystem.read", &readable.to_string_lossy());
+                stuck.push(tokio::spawn(async move {
+                    hub.dispatch_action("device-1", request, Duration::from_secs(120))
+                        .await
+                }));
+            }
+            tokio::time::timeout(Duration::from_secs(30), async {
+                while hub.pending.read().await.len() < MAX_PENDING_ACTIONS_PER_DEVICE {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("pending entries were not registered");
+
+            let overflow = tokio::time::timeout(
+                Duration::from_secs(5),
+                hub.dispatch_action(
+                    "device-1",
+                    remote_request("filesystem.read", &readable.to_string_lossy()),
+                    Duration::from_secs(120),
+                ),
+            )
+            .await;
+            assert!(
+                matches!(overflow, Ok(Err(PrivateLinkError::TooManyPendingActions))),
+                "overflow dispatch was not rejected promptly: {overflow:?}"
+            );
+            assert!(hub.pending.read().await.len() <= MAX_PENDING_ACTIONS_PER_DEVICE);
+
+            client_cancel.cancel();
+            for task in stuck {
+                task.abort();
+            }
+            release_tx.send(()).unwrap();
+            wedge_thread.join().unwrap();
+            let _ = tokio::time::timeout(Duration::from_secs(10), client_task).await;
+            server_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), server_task).await;
+        }
+
+        /// Item 6 (vor-private-grpc #1): the caller's timeout must also bound
+        /// the time spent waiting for room in a full device channel.
+        #[tokio::test]
+        async fn sec6_timeout_bounds_a_full_device_channel() {
+            let hub = PrivateLinkHub::default();
+            let (sender, _receiver) = mpsc::channel(1);
+            hub.register("device-1".into(), sender).await;
+            for attempt in 0..3 {
+                let started = std::time::Instant::now();
+                let result = tokio::time::timeout(
+                    Duration::from_secs(10),
+                    hub.dispatch_action(
+                        "device-1",
+                        remote_request("filesystem.read", r"C:\tmp\x.txt"),
+                        Duration::from_millis(200),
+                    ),
+                )
+                .await;
+                assert!(
+                    matches!(result, Ok(Err(PrivateLinkError::ActionTimeout))),
+                    "attempt {attempt} did not honour its timeout: {result:?}"
+                );
+                assert!(started.elapsed() < Duration::from_secs(5));
+            }
+            assert!(hub.pending.read().await.is_empty());
+        }
+
+        /// Item 6 (vor-private-grpc #14): a poisoned dispatcher mutex must not
+        /// leave the device permanently unable to serve requests.
+        #[tokio::test]
+        async fn sec6_poisoned_dispatcher_mutex_does_not_brick_the_device() {
+            let fixture = mtls_fixture("device-1");
+            let data = tempdir().unwrap();
+            let readable = data.path().join("readable.txt");
+            std::fs::write(&readable, b"recovered").unwrap();
+            let dispatcher = test_dispatcher(data.path());
+            let poison = dispatcher.clone();
+            let _ = std::thread::spawn(move || {
+                let _guard = poison.lock().unwrap();
+                panic!("simulated panic while holding the dispatcher lock");
+            })
+            .join();
+            assert!(dispatcher.is_poisoned());
+
+            let (address, hub, server_cancel, server_task) = spawn_server_with_hub(&fixture).await;
+            let client_cancel = CancellationToken::new();
+            let client_task = tokio::spawn(run_device_dispatch_until_cancelled(
+                device_config(&fixture, address),
+                dispatcher.clone(),
+                client_cancel.clone(),
+            ));
+            wait_connected(&hub).await;
+
+            for _ in 0..2 {
+                let result = hub
+                    .dispatch_action(
+                        "device-1",
+                        remote_request("filesystem.read", &readable.to_string_lossy()),
+                        Duration::from_secs(10),
+                    )
+                    .await
+                    .expect("a poisoned lock must not make the device unusable");
+                assert_eq!(result.status, "ok");
+                assert_eq!(result.output, b"recovered");
+            }
+
+            client_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), client_task).await;
+            server_cancel.cancel();
+            let _ = tokio::time::timeout(Duration::from_secs(5), server_task).await;
+        }
     }
 }

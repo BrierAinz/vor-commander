@@ -49,12 +49,46 @@ fn run() -> Result<(), AnyError> {
     match args.first().map(String::as_str) {
         Some("init") => init_command(&args[1..]),
         Some("sign") => sign_command(&args[1..]),
+        Some("describe") => describe_command(&args[1..]),
         Some("--help" | "-h") | None => {
             print_help();
             Ok(())
         }
         Some(other) => Err(format!("unsupported command: {other}").into()),
     }
+}
+
+fn describe_command(args: &[String]) -> Result<(), AnyError> {
+    let mut request_file = None::<PathBuf>;
+    let mut challenge_file = None::<PathBuf>;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--request-file" => {
+                request_file = Some(next_value(args, &mut index, "--request-file")?.into())
+            }
+            "--challenge-file" => {
+                challenge_file = Some(next_value(args, &mut index, "--challenge-file")?.into())
+            }
+            other => return Err(format!("unsupported describe option: {other}").into()),
+        }
+        index += 1;
+    }
+    let request_base64 =
+        fs::read_to_string(request_file.ok_or("describe requires --request-file")?)?;
+    let request_bytes = STANDARD
+        .decode(request_base64.trim().as_bytes())
+        .map_err(|_| "request file is not valid base64")?;
+    let request_proto = v1::ActionRequest::decode(request_bytes.as_slice())
+        .map_err(|_| "request file is not a valid ActionRequest")?;
+    let request = action_request_from_proto(&request_proto)?;
+    let challenge_json: ChallengeJson = serde_json::from_slice(&fs::read(
+        challenge_file.ok_or("describe requires --challenge-file")?,
+    )?)?;
+    let challenge = challenge_from_json(&challenge_json)?;
+    validate_binding(&request, &challenge, now_unix_ms()?)?;
+    println!("{}", approval_summary(&request, &challenge)?);
+    Ok(())
 }
 
 fn init_command(args: &[String]) -> Result<(), AnyError> {
@@ -142,6 +176,7 @@ fn sign_command(args: &[String]) -> Result<(), AnyError> {
     let mut request_file = None::<PathBuf>;
     let mut challenge_file = None::<PathBuf>;
     let mut out = None::<PathBuf>;
+    let mut confirmed = false;
     let mut index = 0;
 
     while index < args.len() {
@@ -160,6 +195,7 @@ fn sign_command(args: &[String]) -> Result<(), AnyError> {
                 challenge_file = Some(next_value(args, &mut index, "--challenge-file")?.into())
             }
             "--out" => out = Some(next_value(args, &mut index, "--out")?.into()),
+            "--confirmed" => confirmed = true,
             other => return Err(format!("unsupported sign option: {other}").into()),
         }
         index += 1;
@@ -191,7 +227,7 @@ fn sign_command(args: &[String]) -> Result<(), AnyError> {
     validate_binding(&request, &challenge, now)?;
 
     let summary = approval_summary(&request, &challenge)?;
-    if !confirm_human(&summary)? {
+    if !confirmed && !confirm_human(&summary)? {
         return Err("approval declined by user".into());
     }
 
@@ -297,7 +333,7 @@ fn approval_summary(
                 .and_then(|value| value.as_str())
                 .ok_or("prepared write is missing expected_target_sha256")?;
             Ok(format!(
-                "Vör Commander requests permission to write a file.\n\nTarget:\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nContent SHA-256: {}\nExpected target SHA-256: {}\n\nThis approval is bound to this exact request and can be consumed only once.\n\nApprove?",
+                "Vör Commander requests permission to write a file.\n\nTarget:\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nContent SHA-256: {}\nExpected target SHA-256: {}\nExpires (Unix ms): {}\n\nThis approval is bound to this exact request and can be consumed only once.\n\nApprove?",
                 display_truncated(&request.envelope.target, 700),
                 request.envelope.actor_id,
                 request.envelope.device_id,
@@ -309,6 +345,7 @@ fn approval_summary(
                 challenge.request_id,
                 content_sha256,
                 expected_target_sha256,
+                challenge.expires_at_unix_ms,
             ))
         }
         "terminal.exec" => {
@@ -340,7 +377,7 @@ fn approval_summary(
                 .and_then(|value| value.as_u64())
                 .ok_or("prepared terminal request is missing max_output_bytes")?;
             Ok(format!(
-                "Vör Commander requests permission to start a bounded terminal process.\n\nCWD:\n{}\n\nARGV (structured JSON):\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nTimeout: {} ms\nOutput budget: {} bytes\n\nThis approval is bound to this exact request and can be consumed only once. Poll/cancel do not authorize a new process.\n\nApprove?",
+                "Vör Commander requests permission to start a bounded terminal process.\n\nCWD:\n{}\n\nARGV (structured JSON):\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nTimeout: {} ms\nOutput budget: {} bytes\nExpires (Unix ms): {}\n\nThis approval is bound to this exact request and can be consumed only once. Poll/cancel do not authorize a new process.\n\nApprove?",
                 display_truncated(&request.envelope.target, 700),
                 display_truncated(&argv_json, 1400),
                 request.envelope.actor_id,
@@ -353,6 +390,7 @@ fn approval_summary(
                 challenge.request_id,
                 timeout_ms,
                 max_output_bytes,
+                challenge.expires_at_unix_ms,
             ))
         }
         "maintenance.apply" | "maintenance.recover" => {
@@ -496,9 +534,13 @@ fn print_help() {
     println!(
         "  vor-approver init --approver-id ID --secret-store DIR --public-out FILE [--key-name NAME]"
     );
-    println!("  vor-approver sign --approver-id ID --secret-store DIR --request-file REQUEST.b64");
-    println!("      --challenge-file CHALLENGE.json --out APPROVAL.b64 [--key-name NAME]");
-    println!("Signing always requires an interactive Windows Yes/No confirmation.");
+    println!("  vor-approver describe --request-file REQUEST.b64 --challenge-file CHALLENGE.json");
+    println!(
+        "  vor-approver sign --approver-id ID --secret-store DIR --request-file REQUEST.b64 --challenge-file CHALLENGE.json --out APPROVAL.b64 [--confirmed]"
+    );
+    println!(
+        "Signing requires an interactive Windows Yes/No confirmation unless --confirmed is supplied by a wrapper that already obtained explicit owner confirmation."
+    );
 }
 
 #[cfg(test)]

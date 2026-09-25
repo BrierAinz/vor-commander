@@ -27,6 +27,15 @@ if (Test-Path -LiteralPath $recordPath) {
       Move-Item -LiteralPath $temp -Destination $record.path -Force
       Write-Host "Removed vor-commander from $($record.path)"
     }
+    if ($record.PSObject.Properties['backup'] -and $record.backup -and $record.backup.created -and (Test-Path -LiteralPath $record.backup.path)) {
+      $backupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $record.backup.path).Hash.ToLowerInvariant()
+      if ($backupHash -eq $record.backup.sha256) {
+        Remove-Item -LiteralPath $record.backup.path -Force
+        Write-Host "Removed unchanged Vor backup $($record.backup.path)"
+      } else {
+        Write-Warning "Kept modified backup $($record.backup.path)"
+      }
+    }
   }
 }
 if (-not $RemoveData) {

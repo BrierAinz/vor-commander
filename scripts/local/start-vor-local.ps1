@@ -16,7 +16,7 @@ if (-not (Test-VorProcess $cpPid $cpExe)) {
 if (-not (Wait-VorHttp 'http://127.0.0.1:8742/healthz')) { throw 'Gateway health check failed. See state/local/logs/control-plane.err.log' }
 if (-not (Wait-VorHttp 'http://127.0.0.1:8789/healthz')) { throw 'Relay health check failed. See state/local/logs/control-plane.err.log' }
 if (-not (Test-VorProcess $agentPid $agentExe)) {
-  $args = @('private-run','--endpoint','https://127.0.0.1:8790','--server-name','localhost','--device',$config.device_id,'--ca',$config.ca,'--cert',$config.device_cert,'--secret-store',$config.secret_store,'--policy',$config.policy)
+  $args = @('private-run','--endpoint','https://127.0.0.1:8790','--server-name','localhost','--device',$config.device_id,'--ca',$config.ca,'--cert',$config.device_cert,'--secret-store',$config.secret_store,'--policy',$config.policy,'--approvers',$config.approvers)
   $roots = if ($config.PSObject.Properties['allowed_roots']) { @($config.allowed_roots) } else { @($config.allowed_root) }
   foreach ($root in $roots) { $args += @('--root', [string]$root) }
   $args += @('--git',$config.git,'--state',$config.agent_state)

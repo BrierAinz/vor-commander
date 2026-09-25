@@ -36,3 +36,7 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+# Cloudflare Wrangler (estado local de pages dev y D1 local, variables locales)
+.wrangler/
+.dev.vars
+.dev.vars.*

@@ -12,7 +12,10 @@ use thiserror::Error;
 use vor_protocol::Digest32;
 
 const ZERO_HASH: Digest32 = [0; 32];
-const LOCK_RETRY_ATTEMPTS: usize = 200;
+// File-system filters on customer Windows machines can retain a just-closed audit
+// file for several seconds.  Keep the ledger fail-closed, but give legitimate
+// serialization enough time to make progress under I/O contention.
+const LOCK_RETRY_ATTEMPTS: usize = 3_000;
 const LOCK_RETRY_DELAY: Duration = Duration::from_millis(10);
 const ABANDONED_LOCK_AGE: Duration = Duration::from_secs(30);
 
@@ -54,6 +57,16 @@ impl ExecutionRecoveryState {
             Self::EffectApplied => "effect_applied",
             Self::PostEffectUncertain => "post_effect_uncertain",
             Self::Completed => "completed",
+        }
+    }
+
+    fn rank(self) -> u8 {
+        match self {
+            Self::NotExecuted => 0,
+            Self::EffectUncertain => 1,
+            Self::EffectApplied => 2,
+            Self::PostEffectUncertain => 3,
+            Self::Completed => 4,
         }
     }
 
@@ -297,13 +310,32 @@ impl Ledger {
         state: ExecutionRecoveryState,
         updated_at_unix_ms: u64,
     ) -> Result<(), AuditError> {
-        let changed = self.conn.execute(
+        let digest = hex::encode(envelope_digest);
+        let tx = self.conn.transaction()?;
+        let current: Option<String> = tx
+            .query_row(
+                "SELECT state FROM approval_executions WHERE request_id = ?1 AND envelope_digest = ?2",
+                params![request_id, digest],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(current) = current else {
+            return Err(AuditError::MissingExecutionState);
+        };
+        // Recovery reads this record to decide whether an effect may have run.
+        // Moving it backwards (effect_applied -> not_executed) would erase that
+        // evidence, so only forward (or idempotent) transitions are accepted.
+        if state.rank() < ExecutionRecoveryState::parse(&current)?.rank() {
+            return Err(AuditError::InvalidExecutionTransition);
+        }
+        let changed = tx.execute(
             "UPDATE approval_executions SET state = ?3, updated_at_unix_ms = ?4 WHERE request_id = ?1 AND envelope_digest = ?2",
-            params![request_id, hex::encode(envelope_digest), state.as_str(), i64::try_from(updated_at_unix_ms).map_err(|_| AuditError::InvalidSequence)?],
+            params![request_id, digest, state.as_str(), i64::try_from(updated_at_unix_ms).map_err(|_| AuditError::InvalidSequence)?],
         )?;
         if changed != 1 {
             return Err(AuditError::MissingExecutionState);
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -341,8 +373,16 @@ struct LedgerFileLock {
 
 impl LedgerFileLock {
     fn acquire(jsonl_path: &Path) -> Result<Self, AuditError> {
+        Self::acquire_with_retry(jsonl_path, LOCK_RETRY_ATTEMPTS, LOCK_RETRY_DELAY)
+    }
+
+    fn acquire_with_retry(
+        jsonl_path: &Path,
+        attempts: usize,
+        delay: Duration,
+    ) -> Result<Self, AuditError> {
         let lock_path = jsonl_path.with_extension("lock");
-        for _ in 0..LOCK_RETRY_ATTEMPTS {
+        for _ in 0..attempts {
             match OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -364,16 +404,16 @@ impl LedgerFileLock {
                                 if remove_error.kind() == std::io::ErrorKind::NotFound
                                     || is_transient_lock_error(&remove_error) =>
                             {
-                                thread::sleep(LOCK_RETRY_DELAY);
+                                thread::sleep(delay);
                                 continue;
                             }
                             Err(remove_error) => return Err(remove_error.into()),
                         }
                     }
-                    thread::sleep(LOCK_RETRY_DELAY);
+                    thread::sleep(delay);
                 }
                 Err(error) if is_transient_lock_error(&error) => {
-                    thread::sleep(LOCK_RETRY_DELAY);
+                    thread::sleep(delay);
                 }
                 Err(error) => return Err(error.into()),
             }
@@ -559,6 +599,8 @@ pub enum AuditError {
     InvalidExecutionState,
     #[error("approval execution state is missing")]
     MissingExecutionState,
+    #[error("approval execution state cannot move backwards")]
+    InvalidExecutionTransition,
     #[error("audit file lock timed out")]
     LockTimeout,
     #[error("system clock is outside supported range")]
@@ -641,7 +683,7 @@ mod tests {
         let _held = open_without_delete_sharing(&lock);
 
         assert!(matches!(
-            LedgerFileLock::acquire(&jsonl),
+            LedgerFileLock::acquire_with_retry(&jsonl, 3, Duration::from_millis(1)),
             Err(AuditError::LockTimeout)
         ));
     }
@@ -747,6 +789,95 @@ mod tests {
             foreign_existing
                 .iter()
                 .all(|record| record.event.organization_id == "org-b")
+        );
+    }
+
+    /// Security sprint, item 8 (vor-audit H7). Two questions:
+    /// 1. Can a backwards recovery transition re-enable a consumed approval?
+    ///    No: the one-shot claim is the `approval_consumptions` row written by
+    ///    `claim_approval_consumed` (`INSERT OR IGNORE`), independent of the
+    ///    recovery state. The second claim below stays `false` either way.
+    /// 2. Can the recovery record be rewound (`effect_applied` back to
+    ///    `not_executed`), telling recovery that an applied effect never ran?
+    ///    It must not: transitions only move forward.
+    #[test]
+    fn sec8_recovery_state_never_moves_backwards_and_never_reopens_the_claim() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("audit.db");
+        let jsonl = dir.path().join("audit.jsonl");
+        let mut ledger = Ledger::open(&db, &jsonl).unwrap();
+        let digest = [7; 32];
+        assert!(
+            ledger
+                .claim_approval_consumed("req-h7", &digest, 1)
+                .unwrap()
+        );
+
+        for state in [
+            ExecutionRecoveryState::EffectUncertain,
+            ExecutionRecoveryState::EffectApplied,
+        ] {
+            ledger
+                .set_execution_recovery_state("req-h7", &digest, state, 2)
+                .unwrap();
+        }
+        // Idempotent re-assertion of the current state is fine.
+        ledger
+            .set_execution_recovery_state(
+                "req-h7",
+                &digest,
+                ExecutionRecoveryState::EffectApplied,
+                3,
+            )
+            .unwrap();
+
+        let mut rewinds = Vec::new();
+        for backwards in [
+            ExecutionRecoveryState::NotExecuted,
+            ExecutionRecoveryState::EffectUncertain,
+        ] {
+            if ledger
+                .set_execution_recovery_state("req-h7", &digest, backwards, 4)
+                .is_ok()
+            {
+                rewinds.push(backwards);
+            }
+        }
+        // Whatever the transition rule does, the claim is never reopened.
+        assert!(
+            !ledger
+                .claim_approval_consumed("req-h7", &digest, 5)
+                .unwrap()
+        );
+        assert!(
+            rewinds.is_empty(),
+            "backwards transitions accepted: {rewinds:?}"
+        );
+        assert_eq!(
+            ledger.execution_recovery_state("req-h7", &digest).unwrap(),
+            Some(ExecutionRecoveryState::EffectApplied)
+        );
+
+        ledger
+            .set_execution_recovery_state("req-h7", &digest, ExecutionRecoveryState::Completed, 6)
+            .unwrap();
+        assert!(
+            ledger
+                .set_execution_recovery_state(
+                    "req-h7",
+                    &digest,
+                    ExecutionRecoveryState::PostEffectUncertain,
+                    7,
+                )
+                .is_err()
+        );
+        drop(ledger);
+        let reopened = Ledger::open(&db, &jsonl).unwrap();
+        assert_eq!(
+            reopened
+                .execution_recovery_state("req-h7", &digest)
+                .unwrap(),
+            Some(ExecutionRecoveryState::Completed)
         );
     }
 

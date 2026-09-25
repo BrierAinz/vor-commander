@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Waitlist — Vör Commander</title>
+  <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
+  <link rel="alternate" hreflang="es" href="https://vorcommander.app/lista-espera">
+  <link rel="alternate" hreflang="en" href="https://vorcommander.app/en/lista-espera">
+  <link rel="alternate" hreflang="x-default" href="https://vorcommander.app/lista-espera">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/theme-init.js"></script>
+  <script src="/assets/lang-switch.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/en/" aria-label="Vör Commander, home">
+        <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#0f1720"/><path d="M8 8l8 17 8-17" fill="none" stroke="#7cc4ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.5" cy="6" r="1.6" fill="#f5b942"/><circle cx="19.5" cy="6" r="1.6" fill="#f5b942"/></svg>
+        Vör Commander
+      </a>
+      <nav class="nav" aria-label="Language">
+        <a class="lang-switch" href="/lista-espera" hreflang="es" lang="es">Español</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Where the form lands when it is submitted without JavaScript: /api/waitlist
+       (with lang=en) redirects here with the result in the fragment (#ok, #invalid_email...). -->
+  <main id="main">
+    <section class="hero">
+      <div class="wrap">
+        <span class="eyebrow">Remote access waitlist</span>
+
+        <div class="result" id="ok">
+          <h1>Thank you</h1>
+          <p class="lead">If a spot opens up in remote access, we will write to you at that address.</p>
+        </div>
+        <div class="result" id="invalid_email">
+          <h1>Check the email address</h1>
+          <p class="lead">It does not look like a valid address. Go back and correct it.</p>
+        </div>
+        <div class="result" id="use_case_too_long">
+          <h1>Text too long</h1>
+          <p class="lead">The intended use field allows at most 1000 characters.</p>
+        </div>
+        <div class="result" id="turnstile_missing">
+          <h1>Verification missing</h1>
+          <p class="lead">The anti-bot verification needs JavaScript. Enable it and try again, or email us.</p>
+        </div>
+        <div class="result" id="turnstile_failed">
+          <h1>We could not verify you</h1>
+          <p class="lead">The anti-bot verification did not pass. Go back and try again.</p>
+        </div>
+        <div class="result" id="rate_limited">
+          <h1>Too many submissions</h1>
+          <p class="lead">We have received many submissions from your connection. Try again in an hour.</p>
+        </div>
+        <div class="result result-default">
+          <h1>Could not send</h1>
+          <p class="lead">Something went wrong. Go back and try again, or email us at <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
+        </div>
+
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/en/#lista-espera">Back to the form</a>
+          <a class="btn btn-ghost" href="/en/">Go to the home page</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,5 +1,5 @@
 param(
-  [string]$Version = '0.1.0',
+  [string]$Version = '0.1.0-beta.2',
   [string]$OutputDirectory = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')) 'target\pilot-package'),
   [string]$CertificateThumbprint,
   [string]$TimestampUrl = 'http://timestamp.digicert.com',
@@ -12,23 +12,24 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $repo 'scripts\local\toolchain.ps1')
 if (-not $SkipBuild) {
-  Invoke-VorCargoBuild -RepoRoot $repo -Packages @('vor-agent','vor-control-plane','vor-gateway') -CargoPath $CargoPath -VcVarsPath $VcVarsPath
+  Invoke-VorCargoBuild -RepoRoot $repo -Packages @('vor-agent','vor-control-plane','vor-gateway','vor-approver') -CargoPath $CargoPath -VcVarsPath $VcVarsPath
 }
 $stage = Join-Path $OutputDirectory "VorCommanderPilot-$Version"
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path (Join-Path $stage 'target\release'),(Join-Path $stage 'scripts\local'),(Join-Path $stage 'scripts\installer'),(Join-Path $stage 'config') | Out-Null
-foreach ($name in @('vor-agent.exe','vor-control-plane.exe','vor-gateway.exe')) {
+foreach ($name in @('vor-agent.exe','vor-control-plane.exe','vor-gateway.exe','vor-approver.exe')) {
   $source = Join-Path $repo "target\release\$name"
   if (-not (Test-Path -LiteralPath $source)) { throw "Missing release binary: $source" }
   Copy-Item -LiteralPath $source -Destination (Join-Path $stage 'target\release')
 }
-foreach ($name in @('common.ps1','toolchain.ps1','bootstrap-vor-local.ps1','start-vor-local.ps1','stop-vor-local.ps1','status-vor-local.ps1','new-mcp-grant.ps1','show-mcp-token.ps1')) {
+foreach ($name in @('common.ps1','toolchain.ps1','bootstrap-vor-local.ps1','start-vor-local.ps1','stop-vor-local.ps1','status-vor-local.ps1','new-mcp-grant.ps1','show-mcp-token.ps1','approve-vor-request.ps1')) {
   Copy-Item -LiteralPath (Join-Path $repo "scripts\local\$name") -Destination (Join-Path $stage 'scripts\local')
 }
 foreach ($name in @('install-vor-pilot.ps1','uninstall-vor-pilot.ps1','link-vor-clients.ps1','verify-vor-pilot.ps1')) {
   Copy-Item -LiteralPath (Join-Path $repo "scripts\installer\$name") -Destination (Join-Path $stage 'scripts\installer')
 }
-Copy-Item -LiteralPath (Join-Path $repo 'config\policy.example.yaml') -Destination (Join-Path $stage 'config')
+# The repo's policy.example.yaml is the development fixture the tests load; the package ships the generic pilot policy.
+Copy-Item -LiteralPath (Join-Path $repo 'config\policy.pilot.example.yaml') -Destination (Join-Path $stage 'config\policy.example.yaml')
 Copy-Item -LiteralPath (Join-Path $repo 'docs\PILOT_INSTALLER_README.md') -Destination (Join-Path $stage 'README.md')
 
 if ($CertificateThumbprint) {

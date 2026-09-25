@@ -37,7 +37,7 @@ The project is in a **private pilot** on Windows. The website distinguishes what
 - `git.status` and `git.diff`.
 - `process.list` and `process.inspect`.
 - File writes via the two-step `prepare_write` / `commit_write` flow with a signed approval (up to 1 MiB per write, SHA-256 before/after check, atomic replace with backup).
-- Bounded terminal via `prepare_terminal` / `commit_terminal`: structured argv only (no opaque shell strings), confined working directory, 120 s max, 1 MiB output cap, plus `terminal.poll` and `terminal.cancel` for your own sessions.
+- Bounded terminal via `prepare_terminal` / `commit_terminal`: structured argv only (no opaque shell strings), confined working directory, 120 s max, 512 KiB MCP output cap, plus `terminal.poll` and `terminal.cancel` for your own sessions.
 - Ed25519 signed approvals with replay protection.
 - Hash-chained audit log (SQLite + JSONL).
 - Outbound private mTLS tunnel; no inbound public ports.

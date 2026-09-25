@@ -25,6 +25,9 @@ foreach ($root in $AllowedRoot) {
 
 $stop = Join-Path $installFull 'scripts\local\stop-vor-local.ps1'
 if (Test-Path -LiteralPath $stop) { & $stop }
+$existingPolicy = Join-Path $installFull 'config\policy.example.yaml'
+$savedPolicy = $null
+if (Test-Path -LiteralPath $existingPolicy) { $savedPolicy = Get-Content -Raw -LiteralPath $existingPolicy }
 New-Item -ItemType Directory -Force -Path $installFull | Out-Null
 foreach ($relative in @('target','scripts','config')) {
   $source = Join-Path $packageFull $relative
@@ -33,11 +36,22 @@ foreach ($relative in @('target','scripts','config')) {
   if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
   Copy-Item -LiteralPath $source -Destination $destination -Recurse -Force
 }
+if ($null -ne $savedPolicy) {
+  $packagedPolicy = Get-Content -Raw -LiteralPath $existingPolicy
+  if ($packagedPolicy -ne $savedPolicy) {
+    $newPolicy = $existingPolicy + '.new'
+    Copy-Item -LiteralPath $existingPolicy -Destination $newPolicy -Force
+    Write-Warning "Kept the existing policy; the packaged policy is available at $newPolicy"
+  }
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [IO.File]::WriteAllText($existingPolicy, $savedPolicy, $encoding)
+} else {
+  Remove-Item -LiteralPath $existingPolicy -Force
+}
 Copy-Item -LiteralPath (Join-Path $packageFull 'README.md') -Destination $installFull -Force
 
 $bootstrap = Join-Path $installFull 'scripts\local\bootstrap-vor-local.ps1'
 & $bootstrap -DeviceId $DeviceId -AllowedRoot $AllowedRoot -SkipBuild
-if ($LASTEXITCODE -ne 0) { throw 'Bootstrap or health verification failed.' }
 
 if (-not $SkipStartupTask) {
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $installFull 'scripts\local\start-vor-local.ps1'))

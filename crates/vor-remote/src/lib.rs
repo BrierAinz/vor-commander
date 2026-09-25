@@ -150,16 +150,39 @@ fn is_loopback_host(host: Option<Host<&str>>) -> bool {
     }
 }
 
+/// The device id is appended to the relay URL path, so it must never be a dot
+/// segment (`.`, `..`) or look like one after normalisation. The rule matches
+/// `vor-private-grpc`: alphanumeric at both ends, no `..`, and no reserved
+/// Windows device name in case the id is ever used as a file name.
 fn validate_device_id(value: &str) -> Result<(), RemoteError> {
-    if value.is_empty()
-        || value.len() > 128
-        || !value
-            .bytes()
+    let bytes = value.as_bytes();
+    let (Some(first), Some(last)) = (bytes.first(), bytes.last()) else {
+        return Err(RemoteError::InvalidDeviceId);
+    };
+    if value.len() > 128
+        || !first.is_ascii_alphanumeric()
+        || !last.is_ascii_alphanumeric()
+        || value.contains("..")
+        || !bytes
+            .iter()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        || is_reserved_windows_name(value)
     {
         return Err(RemoteError::InvalidDeviceId);
     }
     Ok(())
+}
+
+fn is_reserved_windows_name(value: &str) -> bool {
+    let stem = value
+        .split('.')
+        .next()
+        .unwrap_or(value)
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 type DeviceSocket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
@@ -567,8 +590,25 @@ pub enum RemoteError {
     AckMismatch,
     #[error("relay wire validation failed: {0}")]
     Wire(#[from] vor_wire::WireError),
+    #[error("relay rejected the WebSocket handshake with HTTP status {0}")]
+    RelayHttpStatus(u16),
     #[error("relay WebSocket failed: {0}")]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+    WebSocket(tokio_tungstenite::tungstenite::Error),
+}
+
+impl From<tokio_tungstenite::tungstenite::Error> for RemoteError {
+    /// A rejected handshake carries the relay's full HTTP response, and its
+    /// `Debug` prints every response header and the body. A relay or proxy that
+    /// reflects the `Authorization` header would put the bearer in any log that
+    /// formats the error with `{:?}`, so keep only the status code.
+    fn from(error: tokio_tungstenite::tungstenite::Error) -> Self {
+        match error {
+            tokio_tungstenite::tungstenite::Error::Http(response) => {
+                Self::RelayHttpStatus(response.status().as_u16())
+            }
+            other => Self::WebSocket(other),
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -808,6 +848,118 @@ audit:
         ));
     }
 
+    /// Security sprint, item 5 applied to the relay client: the device id is
+    /// appended to the relay URL path, so a dot segment would resolve to a
+    /// different endpoint (`/v1/device/..` becomes `/v1/`).
+    #[test]
+    fn sec5_device_id_cannot_escape_the_relay_device_path() {
+        for bad in [".", "..", ".hidden", "trailing.", "a..b", "CON", "nul.txt"] {
+            let token = SecretToken::new("secret").unwrap();
+            let config = RemoteConfig::new("wss://relay.example.com/base", bad, token, "0.1");
+            if let Ok(config) = &config {
+                let url = config.device_url().unwrap();
+                panic!(
+                    "accepted device id {bad:?}, relay path becomes {}",
+                    url.path()
+                );
+            }
+            assert!(
+                matches!(config, Err(RemoteError::InvalidDeviceId)),
+                "{bad:?}"
+            );
+        }
+        for good in ["device-1", "123", "ainz-pc.local", "COM10"] {
+            let token = SecretToken::new("secret").unwrap();
+            let config = RemoteConfig::new("wss://relay.example.com/base", good, token, "0.1")
+                .unwrap_or_else(|error| panic!("rejected {good:?}: {error}"));
+            assert_eq!(
+                config.device_url().unwrap().path(),
+                format!("/base/v1/device/{good}")
+            );
+        }
+    }
+
+    /// Security sprint, item 4 (vor-remote #1): a failed handshake must not put
+    /// the bearer token in the error text, even when the relay (or a proxy in
+    /// front of it) reflects the Authorization header in its reply.
+    #[tokio::test]
+    async fn sec4_failed_handshake_error_does_not_contain_the_bearer() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        const SECRET: &str = "sprint-bearer-3f9c1e7a5b";
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).await.unwrap();
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..read]);
+            }
+            let text = String::from_utf8_lossy(&request).into_owned();
+            let authorization = text
+                .lines()
+                .find_map(|line| {
+                    line.split_once(':')
+                        .filter(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+                        .map(|(_, value)| value.trim().to_owned())
+                })
+                .unwrap_or_default();
+            let body = format!("rejected credentials: {authorization}");
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: {authorization}\r\nX-Echo-Authorization: {authorization}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+            let _ = stream.shutdown().await;
+            authorization
+        });
+
+        let config = RemoteConfig::new(
+            &format!("ws://{address}"),
+            "device-1",
+            SecretToken::new(SECRET).unwrap(),
+            "0.1",
+        )
+        .unwrap();
+        let error = RemoteClient::new(config)
+            .probe_once()
+            .await
+            .expect_err("a 401 handshake must fail");
+        let reflected = server.await.unwrap();
+        assert!(
+            reflected.contains(SECRET),
+            "the test relay did not see the bearer: {reflected:?}"
+        );
+
+        let display = error.to_string();
+        let debug = format!("{error:?}");
+        let source_chain = {
+            let mut out = String::new();
+            let mut source = std::error::Error::source(&error);
+            while let Some(inner) = source {
+                out.push_str(&format!("{inner} | {inner:?}\n"));
+                source = inner.source();
+            }
+            out
+        };
+        for (surface, text) in [
+            ("Display", &display),
+            ("Debug", &debug),
+            ("source chain", &source_chain),
+        ] {
+            assert!(
+                !text.contains(SECRET),
+                "bearer leaked through {surface}: {text}"
+            );
+        }
+        assert!(display.contains("401"), "status lost from error: {display}");
+    }
+
     #[test]
     fn secret_debug_and_backoff_are_bounded() {
         let token = SecretToken::new("top-secret").unwrap();
@@ -851,6 +1003,9 @@ audit:
 
     #[tokio::test]
     async fn websocket_read_only_dispatch_roundtrip() {
+        // These bounds only keep a broken test from hanging; transport latency is
+        // not part of the behavior asserted by this end-to-end correctness test.
+        let roundtrip_timeout = Duration::from_secs(120);
         let dir = tempdir().unwrap();
         let file = dir.path().join("remote.txt");
         std::fs::write(&file, b"wss-dispatch-ok").unwrap();
@@ -899,7 +1054,7 @@ audit:
                 .await
         });
 
-        tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::time::timeout(roundtrip_timeout, async {
             loop {
                 if hub.connected_devices().await == vec!["device-1".to_owned()] {
                     break;
@@ -914,7 +1069,7 @@ audit:
             .dispatch_action(
                 "device-1",
                 remote_request("filesystem.read", &file.to_string_lossy()),
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -934,7 +1089,7 @@ audit:
             .dispatch_action(
                 "device-1",
                 remote_request("filesystem.read", r"C:\Windows\win.ini"),
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -945,12 +1100,7 @@ audit:
         let (write_request, write_approval) =
             approved_write_request(&write_target, b"after", b"before", &signing);
         let written = hub
-            .dispatch_approved_action(
-                "device-1",
-                write_request,
-                write_approval,
-                Duration::from_secs(2),
-            )
+            .dispatch_approved_action("device-1", write_request, write_approval, roundtrip_timeout)
             .await
             .unwrap();
         assert_eq!(written.status, "ok");
@@ -964,7 +1114,7 @@ audit:
                 "device-1",
                 terminal_request,
                 terminal_approval,
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -973,13 +1123,13 @@ audit:
         assert_eq!(started["state"], "running");
         let terminal_session = started["session_id"].as_str().unwrap().to_owned();
 
-        let terminal_deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let terminal_deadline = tokio::time::Instant::now() + roundtrip_timeout;
         loop {
             let polled = hub
                 .dispatch_action(
                     "device-1",
                     remote_request("terminal.poll", &terminal_session),
-                    Duration::from_secs(2),
+                    roundtrip_timeout,
                 )
                 .await
                 .unwrap();
@@ -1017,7 +1167,7 @@ audit:
                 "device-1",
                 cancel_request,
                 cancel_approval,
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -1030,7 +1180,7 @@ audit:
             .dispatch_action(
                 "device-1",
                 remote_request("terminal.cancel", &cancel_session),
-                Duration::from_secs(2),
+                roundtrip_timeout,
             )
             .await
             .unwrap();
@@ -1038,13 +1188,13 @@ audit:
         let cancel_ack: serde_json::Value = serde_json::from_slice(&cancelled.output).unwrap();
         assert_eq!(cancel_ack["cancel_requested"], true);
 
-        let cancel_deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let cancel_deadline = tokio::time::Instant::now() + roundtrip_timeout;
         loop {
             let polled = hub
                 .dispatch_action(
                     "device-1",
                     remote_request("terminal.poll", &cancel_session),
-                    Duration::from_secs(2),
+                    roundtrip_timeout,
                 )
                 .await
                 .unwrap();
@@ -1064,13 +1214,13 @@ audit:
         }
 
         client_cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), client_task)
+        tokio::time::timeout(roundtrip_timeout, client_task)
             .await
             .unwrap()
             .unwrap()
             .unwrap();
         relay_cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), relay_task)
+        tokio::time::timeout(roundtrip_timeout, relay_task)
             .await
             .unwrap()
             .unwrap();

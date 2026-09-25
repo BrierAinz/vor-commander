@@ -272,6 +272,25 @@ p {
   cursor: pointer;
 }
 
+/* Selector de idioma: enlace de texto con área táctil de 40 px de alto. */
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.lang-switch:hover {
+  color: var(--text);
+  background: var(--bg-alt);
+}
+
 .theme-toggle svg {
   width: 20px;
   height: 20px;
@@ -854,4 +873,125 @@ tbody tr:last-child td {
 .steps > li,
 .footer-inner > * {
   min-width: 0;
+}
+
+/* Beta y lista de espera */
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.waitlist .section-head {
+  margin-bottom: 24px;
+}
+
+/* Con 12 px de relleno a 360 px quedan 302 px: cabe el widget de Turnstile (300 px). */
+.waitlist-card {
+  max-width: 640px;
+  padding: 12px;
+}
+
+@media (min-width: 400px) {
+  .waitlist-card {
+    padding: 20px;
+  }
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field-req,
+.field-opt,
+.field-hint {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.88rem;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible {
+  border-color: var(--accent);
+}
+
+.cf-turnstile {
+  max-width: 100%;
+  min-height: 65px;
+  margin-bottom: 16px;
+}
+
+.waitlist-card button[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.form-status {
+  margin: 12px 0 0;
+  font-weight: 600;
+}
+
+.form-status:empty {
+  display: none;
+}
+
+.form-status-ok {
+  color: var(--ok);
+}
+
+.form-status-error {
+  color: var(--warn);
+}
+
+.form-status-pending {
+  color: var(--muted);
+}
+
+.privacy {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* Resultado del envío sin JavaScript (lista-espera.html): se muestra el
+   bloque cuyo id coincide con el fragmento; si no hay ninguno, el genérico. */
+
+.result {
+  display: none;
+}
+
+.result-default,
+.result:target {
+  display: block;
+}
+
+.result:target ~ .result-default {
+  display: none;
 }

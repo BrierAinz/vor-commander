@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vör Commander — public beta, open source</title>
+  <meta name="description" content="Vör Commander gives your AI assistant controlled access to files, git, processes, and a bounded terminal on your Windows PC, with signed approvals, tamper-evident audit, and no open ports. Public beta in local mode, open source under MPL-2.0.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Vör Commander — public beta, open source">
+  <meta property="og:description" content="The same power over your machine, with security you can prove: signed approvals, audit, and no open ports.">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="es_ES">
+  <link rel="alternate" hreflang="es" href="https://vorcommander.app/">
+  <link rel="alternate" hreflang="en" href="https://vorcommander.app/en/">
+  <link rel="alternate" hreflang="x-default" href="https://vorcommander.app/">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/theme-init.js"></script>
+  <script src="/assets/main.js" defer></script>
+  <script src="/assets/waitlist.js" defer></script>
+  <script src="/assets/lang-switch.js" defer></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#top" aria-label="Vör Commander, home">
+        <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#0f1720"/><path d="M8 8l8 17 8-17" fill="none" stroke="#7cc4ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.5" cy="6" r="1.6" fill="#f5b942"/><circle cx="19.5" cy="6" r="1.6" fill="#f5b942"/></svg>
+        Vör Commander
+      </a>
+      <nav class="nav" aria-label="Main">
+        <ul class="nav-links">
+          <li><a href="#como-funciona">How it works</a></li>
+          <li><a href="#seguridad">Security</a></li>
+          <li><a href="#comparativa">Comparison</a></li>
+          <li><a href="#instalacion">Installation</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+        <a class="lang-switch" href="/" hreflang="es" lang="es">Español</a>
+        <a class="btn btn-primary btn-sm header-cta" href="#beta">Download</a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Change theme" aria-pressed="false" data-label-to-light="Switch to light theme" data-label-to-dark="Switch to dark theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.7 14.3A8.5 8.5 0 0 1 9.7 3.3a.75.75 0 0 0-.98-.9A10 10 0 1 0 21.6 15.3a.75.75 0 0 0-.9-1z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- Hero -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="wrap">
+        <span class="eyebrow">Public beta · local mode · open source · Windows</span>
+        <h1 id="hero-title">Your AI assistant works on your PC. <span>You decide what it may touch.</span></h1>
+        <p class="lead">Vör Commander is a remote agent with an MCP gateway, written in Rust for Windows. It gives your AI assistant controlled access to files, git, processes, and a bounded terminal on your machine, with signed approvals, tamper-evident audit, and without opening inbound ports.</p>
+        <p class="lead">It is open source (MPL-2.0) and anyone can install and use it in local mode on their Windows PC. Hosted remote access is not yet open to the public: it goes through a waitlist.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Download</a>
+          <a class="btn btn-ghost" href="#lista-espera">Remote access waitlist</a>
+        </div>
+        <p class="hero-note">The first ZIP release is coming soon. Today you can already <a href="https://github.com/BrierAinz/vor-commander#readme">build it from source</a>.</p>
+        <ul class="clients" aria-label="Compatible assistants">
+          <li>Claude <small>(remote connector, with waitlist)</small></li>
+          <li>ChatGPT <small>(read-only connector, validated)</small></li>
+          <li>Cursor <small>(in the pilot)</small></li>
+          <li>VS Code <small>(in the pilot)</small></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Problema -->
+    <section class="alt" id="problema" aria-labelledby="problema-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">The problem</span>
+          <h2 id="problema-title">Giving an AI hands on your machine should not be an act of faith</h2>
+          <p class="lead">Assistants already write code, run commands, and read your repository. The hard part is doing so without handing over control of the machine.</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>Who approved that?</h3>
+            <p>A write or a command that no one reviewed is a write or a command no one can explain afterwards. You need an approval tied to the exact action, not a generic "yes".</p>
+          </div>
+          <div class="card">
+            <h3>What really happened?</h3>
+            <p>If the log of what happened can be edited, it is useless as evidence. You need a chained audit that exposes any tampering.</p>
+          </div>
+          <div class="card">
+            <h3>How does it get in?</h3>
+            <p>Opening a port on your PC so that an AI in the cloud can reach it widens the attack surface. The agent should reach out, not wait for connections.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cómo funciona -->
+    <section id="como-funciona" aria-labelledby="como-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">How it works</span>
+          <h2 id="como-title">From the assistant to your PC, no shortcuts</h2>
+          <p class="lead">Every request passes through the MCP gateway and travels over a private tunnel to the agent on your PC, which re-evaluates the policy before acting.</p>
+        </div>
+
+        <figure class="flow-figure" aria-labelledby="flow-caption">
+          <ol class="flow">
+            <li>
+              <h3>AI assistant</h3>
+              <p>Claude or ChatGPT as a remote connector with OAuth and PKCE; Cursor and VS Code locally with the pilot.</p>
+            </li>
+            <li>
+              <h3>MCP gateway</h3>
+              <p>Authenticates, applies the session scope, and exposes only controlled tools.</p>
+            </li>
+            <li>
+              <h3>Private tunnel</h3>
+              <p>Private mTLS transport. The agent connects outbound: no inbound port on your PC.</p>
+            </li>
+            <li>
+              <h3>Agent on your PC</h3>
+              <p>Re-evaluates local policy, confines paths, and executes only inside your allowed folders.</p>
+            </li>
+          </ol>
+          <div class="flow-rails">
+            <div class="rail rail-approve">
+              <h3>Approvals</h3>
+              <p>Writes and terminal commands wait for your signed approval (Ed25519), tied to the exact request and single-use.</p>
+            </div>
+            <div class="rail rail-audit">
+              <h3>Audit</h3>
+              <p>Every authorization, approval, and execution is recorded in a hash-chained log (SQLite + JSONL).</p>
+            </div>
+          </div>
+          <figcaption id="flow-caption" class="note">Flow: assistant → MCP gateway → private tunnel → agent on your PC, with approvals and audit at each step.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Funciones -->
+    <section class="alt" id="funciones" aria-labelledby="funciones-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Features</span>
+          <h2 id="funciones-title">What your assistant can do</h2>
+          <p class="lead">We mark clearly what works today and what arrives with the pilot.</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <h3>Files <span class="tag tag-live">Today</span></h3>
+            <ul>
+              <li>Read files inside your allowed folders.</li>
+              <li>Write in two steps: prepare and confirm with signed approval.</li>
+              <li>Up to 1 MiB per write, with SHA-256 check before and after and atomic replace with backup.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Git and processes <span class="tag tag-live">Today</span></h3>
+            <ul>
+              <li><code>git status</code> and <code>git diff</code> of the repository.</li>
+              <li>List and inspect processes.</li>
+              <li>Read-only: there is no public tool to kill processes.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Bounded terminal <span class="tag tag-live">Today</span></h3>
+            <ul>
+              <li>Structured arguments, never an opaque shell string.</li>
+              <li>Confined working directory, maximum 120 s and 1 MiB of output.</li>
+              <li>Asynchronous sessions: poll and cancel only your own.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Explore the project <span class="tag tag-soon">In the pilot</span></h3>
+            <ul>
+              <li><code>list_directory</code>, <code>search_files</code>, and <code>search_content</code> with limits.</li>
+              <li><code>file_info</code> for metadata.</li>
+              <li><code>read_file</code> by ranges.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Policy-based approval <span class="tag tag-soon">Coming soon</span></h3>
+            <p>Low-risk operations inside allowed folders run directly and are audited; destructive ones still request signed approval.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seguridad -->
+    <section id="seguridad" aria-labelledby="seguridad-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Security</span>
+          <h2 id="seguridad-title">Security you can prove, not just promise</h2>
+          <p class="lead">Every guarantee on this list has an associated test in the product repository.</p>
+        </div>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>Signed approvals</h3>
+            <p>Writes and terminal commands require an Ed25519 approval tied to the request identifier, its canonical digest, the policy, the required capability, the expiration, and a nonce. There is no <code>approved=true</code> shortcut.</p>
+          </div>
+          <div class="card">
+            <h3>No replays</h3>
+            <p>Each approval is consumed once and that consumption is persisted. Replaying the same approval is rejected as <code>approval_replayed</code>.</p>
+          </div>
+          <div class="card">
+            <h3>Tamper-evident audit</h3>
+            <p>SQLite log with a hash-chained JSONL mirror: authorizations, verified and consumed approvals, failures, and executions.</p>
+          </div>
+          <div class="card">
+            <h3>No inbound ports</h3>
+            <p>The agent connects outbound via gRPC with private mTLS, with WSS as fallback. It never opens a public port to re-establish the connection.</p>
+          </div>
+          <div class="card">
+            <h3>Root folders and escapes</h3>
+            <p>Work only happens inside the folders you authorize. <code>..</code> and Windows reparse points (junctions and symbolic links) in the path are rejected.</p>
+          </div>
+          <div class="card">
+            <h3>Isolation between teams <span class="tag tag-soon">In development</span></h3>
+            <p>Each device, session, approval, and audit event belongs to an organization, and the organization is derived from the authenticated identity, not from the request. Tested locally; not yet deployed.</p>
+          </div>
+        </div>
+        <p class="note">Application policy is a barrier, not an operating-system sandbox. We do not claim OS-level containment.</p>
+      </div>
+    </section>
+
+    <!-- Comparativa -->
+    <section class="alt" id="comparativa" aria-labelledby="comparativa-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Comparison</span>
+          <h2 id="comparativa-title">Vör Commander vs. Desktop Commander</h2>
+          <p class="lead">Desktop Commander is a good tool and the reference in this space. This is an honest comparison, with only what we can back up.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <caption>Feature comparison. "—" means we make no claims on that point.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Feature</th>
+                <th scope="col">Vör Commander</th>
+                <th scope="col">Desktop Commander</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Local MCP</th>
+                <td>Yes, all code under MPL-2.0</td>
+                <td class="yes">Yes, open source (MIT)</td>
+              </tr>
+              <tr>
+                <th scope="row">Remote MCP</th>
+                <td class="yes">Yes</td>
+                <td class="yes">Yes</td>
+              </tr>
+              <tr>
+                <th scope="row">Signed approval for writes and commands</th>
+                <td class="yes">Yes, Ed25519 and single-use</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <th scope="row">Audit log</th>
+                <td class="yes">Yes, hash-chained and tamper-evident</td>
+                <td class="yes">Yes, local call history and audit logs</td>
+              </tr>
+              <tr>
+                <th scope="row">Allowed folders and symlink blocking</th>
+                <td class="yes">Yes, also Windows junctions</td>
+                <td class="yes">Yes, symlink prevention</td>
+              </tr>
+              <tr>
+                <th scope="row">Container isolation</th>
+                <td>No; application guardrails, not an OS sandbox</td>
+                <td class="yes">Optional, with Docker</td>
+              </tr>
+              <tr>
+                <th scope="row">Operating systems</th>
+                <td>Windows</td>
+                <td class="yes">Windows, macOS, and Linux</td>
+              </tr>
+              <tr>
+                <th scope="row">No inbound ports on your PC</th>
+                <td class="yes">Yes, outbound private mTLS tunnel</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <th scope="row">Included prompts</th>
+                <td class="yes">42, in Spanish</td>
+                <td class="yes">More than 60</td>
+              </tr>
+              <tr>
+                <th scope="row">Free plan</th>
+                <td>Free public beta (local mode)</td>
+                <td>Free: 10,000 tool calls per month</td>
+              </tr>
+              <tr>
+                <th scope="row">Paid plan</th>
+                <td>Remote access: waitlist</td>
+                <td>Pro: USD 20 per month</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-note">Desktop Commander data per its public site (desktopcommander.app). Check there for its current terms.</p>
+      </div>
+    </section>
+
+    <!-- Instalación -->
+    <section id="instalacion" aria-labelledby="instalacion-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Installation <span class="tag tag-soon">Beta</span></span>
+          <h2 id="instalacion-title">Local installation of the beta</h2>
+          <p class="lead">A per-user ZIP package, no Windows service, no administrator rights, and no firewall changes. The local gateway listens only on loopback.</p>
+        </div>
+        <div class="callout" role="note">
+          <p><strong>Available now: <a href="https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.1">v0.1.0-beta.1</a></strong> on GitHub Releases. The binaries are not yet signed with Authenticode: check the published SHA-256 before running them, or build it yourself from source following the <a href="https://github.com/BrierAinz/vor-commander#readme">README</a>. It is a beta: the steps may change.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <h3>Verify the package</h3>
+            <p>Compare the ZIP against its <code>.sha256</code> file:</p>
+            <pre><code>Get-FileHash -Algorithm SHA256 .\vor-pilot.zip</code></pre>
+          </li>
+          <li>
+            <h3>Extract and install with your folders</h3>
+            <p>Specify the folders it will have access to. A full drive is rejected; if you specify none, your Documents folder is used.</p>
+            <pre><code>.\scripts\installer\install-vor-pilot.ps1 -AllowedRoot 'D:\Projects\MyProject'</code></pre>
+          </li>
+          <li>
+            <h3>The installer prepares your identity</h3>
+            <p>Creates the local CA, certificates, and credentials protected with DPAPI without you copying keys. Starts the gateway and the agent, checks their health, and calls <code>commander_status</code>.</p>
+          </li>
+          <li>
+            <h3>Start at login</h3>
+            <p>Registers a per-user scheduled task with limited privileges. Use <code>-SkipStartupTask</code> if you only want it for this session.</p>
+          </li>
+          <li>
+            <h3>Connect your assistant</h3>
+            <p>Add the <code>vor-commander</code> entry to Cursor and VS Code, with a backup of the previous JSON. Claude Desktop requires the local stdio adapter <span class="tag tag-soon">Coming soon</span>.</p>
+          </li>
+          <li>
+            <h3>Uninstall without leftovers</h3>
+            <p>Stops only this installation's processes, removes the task and the client entries, and keeps the audit log unless you pass <code>-RemoveData</code>.</p>
+            <pre><code>.\scripts\installer\uninstall-vor-pilot.ps1</code></pre>
+          </li>
+        </ol>
+        <p class="note">With the package's default policy, reads inside your folders are automatic and writes and terminal commands request approval. Destructive or elevated operations, the browser, desktop control, public ports, purchases, and secret extraction are denied.</p>
+      </div>
+    </section>
+
+    <!-- Beta pública -->
+    <section class="alt" id="beta" aria-labelledby="beta-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Public beta</span>
+          <h2 id="beta-title">Public beta — local mode, open source</h2>
+          <p class="lead">Anyone can install Vör Commander and use it on their Windows PC, free of charge and with all the code in the open. Hosted remote access is separate, with a waitlist.</p>
+        </div>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>Local mode <span class="tag tag-live">Open</span></h3>
+            <ul>
+              <li>Agent and gateway on your own PC, no account and no cost.</li>
+              <li>Open source under MPL-2.0 on <a href="https://github.com/BrierAinz/vor-commander">GitHub</a>.</li>
+              <li>The first ZIP release is coming soon; today you can <a href="https://github.com/BrierAinz/vor-commander#readme">build it from source</a>.</li>
+            </ul>
+            <div class="card-actions">
+              <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Download</a>
+              <a class="btn btn-ghost" href="https://github.com/BrierAinz/vor-commander#readme">Build from source</a>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Hosted remote access <span class="tag tag-soon">Waitlist</span></h3>
+            <p>The managed gateway, to use Vör Commander from Claude or ChatGPT in the cloud, is not yet open to the public: cross-organization isolation is tested locally but not yet deployed, and we will not open the service before it is.</p>
+            <div class="card-actions">
+              <a class="btn btn-ghost" href="#lista-espera">Join the waitlist</a>
+            </div>
+          </div>
+        </div>
+        <p class="note">Questions, ideas, or bugs? Reach us on <a href="https://github.com/BrierAinz/vor-commander/discussions">GitHub Discussions</a>, or, if you prefer email, at <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
+      </div>
+    </section>
+
+    <!-- Lista de espera -->
+    <section id="lista-espera" aria-labelledby="lista-espera-title">
+      <div class="wrap waitlist">
+        <div class="section-head">
+          <span class="eyebrow">Remote access</span>
+          <h2 id="lista-espera-title">Remote access waitlist</h2>
+          <p class="lead">Leave us your email and we will let you know when we can give you access to the hosted gateway.</p>
+        </div>
+        <form class="card waitlist-card" id="waitlist-form" action="/api/waitlist" method="post"
+              data-msg-turnstile-pending="Wait for the anti-bot verification to finish and try again."
+              data-msg-sending="Sending…"
+              data-msg-bad-response="Unexpected response from the server. Try again later."
+              data-msg-unexpected="Unexpected error."
+              data-msg-network="No connection to the server. Try again or write to us at contact@brierstudios.com.">
+          <input type="hidden" name="lang" value="en">
+          <div class="field">
+            <label for="wl-email">Email <span class="field-req">(required)</span></label>
+            <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email" inputmode="email" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="wl-name">Name <span class="field-opt">(optional)</span></label>
+            <input id="wl-name" name="name" type="text" maxlength="200" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="wl-use-case">What would you use it for? <span class="field-opt">(optional)</span></label>
+            <textarea id="wl-use-case" name="use_case" rows="4" maxlength="1000" aria-describedby="wl-use-case-count"></textarea>
+            <span class="field-hint" id="wl-use-case-count">Maximum 1000 characters</span>
+          </div>
+          <div class="cf-turnstile" data-sitekey="0x4AAAAAAFDNV7vMOq8tbebd" data-language="en" data-size="flexible"></div>
+          <noscript><p class="note">The anti-bot verification requires JavaScript. If you have it disabled, write to us at <a href="mailto:contact@brierstudios.com?subject=V%C3%B6r%20Commander%20waitlist">contact@brierstudios.com</a>.</p></noscript>
+          <button class="btn btn-primary" type="submit">Join the waitlist</button>
+          <p class="form-status" id="waitlist-status" role="status" aria-live="polite"></p>
+          <p class="privacy"><strong>Privacy.</strong> We store your email, the name and intended use if you provide them, the date, your browser (user agent, truncated), and a fingerprint (hash) of your IP — never the IP in cleartext — used only to deter abusive submissions. We use this data solely to write to you about remote access. The anti-bot verification is provided by Cloudflare Turnstile. You can request deletion at <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" aria-labelledby="faq-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Frequently asked questions</span>
+          <h2 id="faq-title">FAQ</h2>
+        </div>
+        <div class="faq">
+          <details>
+            <summary>Which operating systems does it run on?</summary>
+            <div><p>The agent is written in Rust and the beta is for Windows. Interactive owner approval is currently only available on Windows.</p></div>
+          </details>
+          <details>
+            <summary>Can the AI write or run commands without me knowing?</summary>
+            <div><p>Not today: every write and every terminal command goes through a prepare step and a confirm step with your signed approval. Policy-based approval, which will let low-risk operations inside your folders pass through and be audited, arrives with the pilot; destructive operations will keep requiring your signature.</p></div>
+          </details>
+          <details>
+            <summary>Do I have to open ports or touch the firewall?</summary>
+            <div><p>No. The agent connects outbound over a private tunnel with mTLS, and the local installer does not change the Windows firewall or open public ports.</p></div>
+          </details>
+          <details>
+            <summary>Where are my keys stored?</summary>
+            <div><p>In your Windows profile, protected with DPAPI. The key you use to sign approvals is held by neither the gateway nor the agent: the agent only knows your public key.</p></div>
+          </details>
+          <details>
+            <summary>Can it escape the folders I authorize?</summary>
+            <div><p>Paths are confined to your root folders. <code>..</code> and junctions or symbolic links in the path are rejected, and the terminal's working directory must remain inside an allowed folder.</p></div>
+          </details>
+          <details>
+            <summary>Which assistants can I use?</summary>
+            <div><p>Today, Claude as a remote connector (OAuth) with all the tools: read, git, processes, approved write, and terminal. ChatGPT: read-only connector (validated). Both remote connectors go through the hosted gateway, which for now is on the <a href="#lista-espera">waitlist</a>. The local installer wires up Cursor and VS Code automatically; a stdio adapter will bring local support for Claude Desktop <span class="tag tag-soon">Coming soon</span>.</p></div>
+          </details>
+          <details>
+            <summary>Is it open source?</summary>
+            <div><p>All the code is open under MPL-2.0 and lives on <a href="https://github.com/BrierAinz/vor-commander">GitHub</a>. The hosted service is operated by Brier Studios; the "Vör Commander" brand is not covered by the code license.</p></div>
+          </details>
+          <details>
+            <summary>How much does it cost?</summary>
+            <div><p>The public beta in local mode is free. Hosted remote access does not yet have a public price: join the <a href="#lista-espera">waitlist</a> and we will write to you.</p></div>
+          </details>
+          <details>
+            <summary>Why is remote access on a waitlist?</summary>
+            <div><p>Because the hosted gateway's cross-organization isolation is tested locally but not yet deployed. Until it is, we are not opening the remote service to the public. Local mode does not depend on it and is open as of today.</p></div>
+          </details>
+          <details>
+            <summary>Where do I ask questions or give feedback?</summary>
+            <div><p>On <a href="https://github.com/BrierAinz/vor-commander/discussions">GitHub Discussions</a>. Security bugs, via the private channel described in <a href="https://github.com/BrierAinz/vor-commander/blob/main/SECURITY.md">SECURITY.md</a>. You can also write to <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div>
+        <p><strong>Vör Commander</strong> · public beta for Windows, open source under MPL-2.0.</p>
+        <p>Desktop Commander is a trademark of its respective owners; it is cited for comparison purposes only.</p>
+      </div>
+      <ul class="footer-links" aria-label="Footer">
+        <li><a href="#como-funciona">How it works</a></li>
+        <li><a href="#seguridad">Security</a></li>
+        <li><a href="#comparativa">Comparison</a></li>
+        <li><a href="#beta">Download</a></li>
+        <li><a href="https://github.com/BrierAinz/vor-commander">GitHub</a></li>
+        <li><a href="https://github.com/BrierAinz/vor-commander/discussions">Discussions</a></li>
+        <li><a href="mailto:contact@brierstudios.com">Contact</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

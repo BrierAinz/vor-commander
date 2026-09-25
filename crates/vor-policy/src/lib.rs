@@ -246,8 +246,14 @@ fn command_is_inline_eval(argv: &[&str]) -> bool {
     } else if executable == "osascript" {
         (OSASCRIPT, false)
     } else if executable == "powershell" || executable == "pwsh" {
+        if powershell_is_inline_eval(argv, executable == "powershell") {
+            return true;
+        }
         (POWERSHELL, true)
     } else if executable == "cmd" {
+        if cmd_is_inline_eval(argv) {
+            return true;
+        }
         (CMD, true)
     } else if matches!(
         executable.as_str(),
@@ -291,6 +297,87 @@ fn command_is_inline_eval(argv: &[&str]) -> bool {
 
         if !(normalized.starts_with('-') || powershell && normalized.starts_with('/')) {
             break;
+        }
+    }
+    false
+}
+
+/// cmd.exe runs the rest of its command line for `/C`, `/K` and the
+/// undocumented-but-supported `/R` (a `/C` synonym), and it accepts the command
+/// glued to the switch (`/cwhoami`). No other cmd switch starts with those
+/// letters, so a prefix match is exact.
+fn cmd_is_inline_eval(argv: &[&str]) -> bool {
+    for argument in argv.iter().skip(1) {
+        let normalized = argument.to_ascii_lowercase();
+        if normalized.starts_with("/c")
+            || normalized.starts_with("/k")
+            || normalized.starts_with("/r")
+        {
+            return true;
+        }
+        if !normalized.starts_with('/') {
+            break;
+        }
+    }
+    false
+}
+
+/// PowerShell accepts `-`, `--` or `/` before a parameter name, any unambiguous
+/// prefix of that name, and a few documented aliases. Windows PowerShell 5.1
+/// (`powershell.exe`) also treats the first positional argument as `-Command`
+/// text; `pwsh` treats it as `-File`.
+fn powershell_is_inline_eval(argv: &[&str], windows_powershell: bool) -> bool {
+    // Parameters that consume the next argument as their value.
+    const VALUED: &[&str] = &[
+        "executionpolicy",
+        "windowstyle",
+        "version",
+        "workingdirectory",
+        "configurationname",
+        "configurationfile",
+        "inputformat",
+        "outputformat",
+        "encodedarguments",
+        "psconsolefile",
+        "settingsfile",
+        "custompipename",
+    ];
+    const VALUED_ALIASES: &[&str] = &["ep", "ex", "w", "v", "wd", "ea", "if", "of"];
+
+    let mut arguments = argv.iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        let normalized = argument.to_ascii_lowercase();
+        let name = normalized
+            .strip_prefix("--")
+            .or_else(|| normalized.strip_prefix('-'))
+            .or_else(|| normalized.strip_prefix('/'));
+        let Some(name) = name else {
+            return windows_powershell;
+        };
+        let (name, inline_value) = match name.split_once(':') {
+            Some((name, _)) => (name, true),
+            None => (name, false),
+        };
+        if name.is_empty() {
+            continue;
+        }
+        if matches!(name, "e" | "ec" | "cwa")
+            || "command".starts_with(name)
+            || (name.len() >= 2 && "encodedcommand".starts_with(name))
+            || (name.len() >= 8 && "commandwithargs".starts_with(name))
+        {
+            return true;
+        }
+        if name == "f" || (name.len() >= 2 && "file".starts_with(name)) {
+            return false;
+        }
+        if !inline_value
+            && (VALUED_ALIASES.contains(&name)
+                || VALUED
+                    .iter()
+                    .any(|full| name.len() >= 3 && full.starts_with(name)))
+        {
+            arguments.next();
         }
     }
     false
@@ -392,6 +479,12 @@ mod tests {
     }
 
     #[test]
+    fn packaged_pilot_policy_parses() {
+        let input = include_str!("../../../config/policy.pilot.example.yaml");
+        assert!(PolicyEngine::from_yaml_str(input).is_ok());
+    }
+
+    #[test]
     fn accepts_utf8_bom() {
         let input = include_str!("../../../config/policy.example.yaml");
         assert!(input.starts_with('\u{feff}'));
@@ -458,6 +551,61 @@ mod tests {
             assert_eq!(decision.kind, PolicyDecisionKind::Approval);
             assert_eq!(decision.required_capability, None);
             assert_eq!(decision.reason_code, "terminal_default");
+        }
+    }
+
+    /// Security sprint, item 7 (vor-policy H3): every spelling of a cmd.exe
+    /// inline command must require the same elevated approval as
+    /// `powershell -Command`, and so must the PowerShell spellings that the
+    /// shell accepts as `-Command` / `-EncodedCommand`.
+    #[test]
+    fn sec7_inline_eval_table_for_cmd_and_powershell_variants() {
+        let inline = [
+            r#"["cmd", "/c", "whoami"]"#,
+            r#"["cmd", "/C", "whoami"]"#,
+            r#"["cmd", "/k", "whoami"]"#,
+            r#"["cmd", "/K", "whoami"]"#,
+            r#"["cmd.exe", "/c", "whoami"]"#,
+            r#"["CMD.EXE", "/C", "whoami"]"#,
+            r#"["Cmd.Exe", "/q", "/d", "/s", "/c", "whoami"]"#,
+            r#"["C:\\Windows\\System32\\cmd.exe", "/c", "whoami"]"#,
+            r#"["C:/Windows/System32/CMD.EXE", "/V:ON", "/E:ON", "/C", "whoami"]"#,
+            r#"["cmd", "/r", "whoami"]"#,
+            r#"["cmd", "/R", "whoami"]"#,
+            r#"["cmd", "/cwhoami"]"#,
+            r#"["cmd", "/Kwhoami"]"#,
+            r#"["powershell", "-Command", "Get-Date"]"#,
+            r#"["powershell", "-c", "Get-Date"]"#,
+            r#"["powershell", "/Command", "Get-Date"]"#,
+            r#"["powershell", "-Com", "Get-Date"]"#,
+            r#"["powershell.exe", "-e", "AAAA"]"#,
+            r#"["powershell.exe", "-ec", "AAAA"]"#,
+            r#"["powershell.exe", "-enc", "AAAA"]"#,
+            r#"["pwsh", "-CommandWithArgs", "Get-Date"]"#,
+            r#"["pwsh", "-cwa", "Get-Date"]"#,
+        ];
+        let mut misses = Vec::new();
+        for argv_yaml in inline {
+            let decision = engine().evaluate(&terminal_request(Some(argv_yaml)));
+            if decision.reason_code != "terminal_inline_eval"
+                || decision.required_capability.as_deref() != Some("elevated")
+            {
+                misses.push(argv_yaml);
+            }
+        }
+        assert!(
+            misses.is_empty(),
+            "not classified as inline eval: {misses:#?}"
+        );
+
+        for argv_yaml in [
+            r#"["cmd", "script.bat", "/c"]"#,
+            r#"["cmdkey", "/list"]"#,
+            r#"["powershell", "-File", "script.ps1"]"#,
+            r#"["pwsh", "-NoProfile", "script.ps1", "-c"]"#,
+        ] {
+            let decision = engine().evaluate(&terminal_request(Some(argv_yaml)));
+            assert_eq!(decision.reason_code, "terminal_default", "{argv_yaml}");
         }
     }
 

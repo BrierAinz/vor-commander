@@ -1,8 +1,8 @@
 param([string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'VorCommanderPilot'))
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-& (Join-Path $InstallRoot 'scripts\local\status-vor-local.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Local process verification failed.' }
+$status = & (Join-Path $InstallRoot 'scripts\local\status-vor-local.ps1')
+if (-not $status -or -not ($status.ControlPlane -and $status.Agent -and $status.Gateway8742 -and $status.Relay8789 -and $status.PrivateGrpc8790)) { throw 'Local process verification failed.' }
 $cred = Import-Clixml (Join-Path $InstallRoot 'state\local\mcp-credential.clixml')
 $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($cred.Password)
 try { $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }

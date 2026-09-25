@@ -57,3 +57,33 @@ Live evidence on 2026-09-18:
 - ChatGPT `commander_status` after restart returned phase `P4-C/OAuth`.
 
 M0 is COMPLETE. M1 certification no longer depends on OAuth M0; its remaining gates are the external signed approval/challenge flow and a dedicated live canary.
+
+## Actor identity of OAuth grants (security sprint 1, 2026-09-25)
+
+Until this change every grant minted by `/oauth/token` carried the fixed actor
+`chatgpt-owner`, whatever connector received it. The device audit therefore
+recorded ChatGPT, Claude and any other OAuth client as the same actor.
+
+Grants issued through the OAuth flow now carry the actor
+
+```text
+<owner actor>:oauth:<DCR client_id>
+```
+
+for example `local-pilot:oauth:3q2+...`. The owner part is the actor of the
+bootstrap token that approved the consent screen (today always `local-pilot`),
+and the client part is the `client_id` issued by Dynamic Client Registration,
+which is public and already persisted with the client name and redirect URIs in
+`GrantStore`. To see which connector an audit entry belongs to, look the
+`client_id` up in the registered OAuth clients.
+
+Compatibility: grants issued before the change keep the actor `chatgpt-owner`
+and remain valid until they expire (30 days after issue). No code matches on
+that value, so there is no migration; a connector moves to the new actor the
+next time it goes through the OAuth flow. Covered by
+`sec3_oauth_grants_carry_owner_and_client_specific_actor` and
+`sec3_legacy_chatgpt_owner_grants_remain_valid` in `apps/vor-gateway/src/oauth.rs`.
+
+Still open: issuing and redeeming OAuth grants is not written to an audit
+ledger. The gateway has no ledger of its own (the audit lives on the device), so
+closing that needs a gateway-side audit sink.

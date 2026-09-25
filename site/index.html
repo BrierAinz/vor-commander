@@ -3,19 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vör Commander — piloto privado</title>
-  <meta name="description" content="Vör Commander da a tu asistente de IA acceso controlado a archivos, git, procesos y un terminal acotado en tu PC con Windows, con aprobaciones firmadas, auditoría a prueba de manipulación y sin puertos abiertos.">
+  <title>Vör Commander — beta pública, open source</title>
+  <meta name="description" content="Vör Commander da a tu asistente de IA acceso controlado a archivos, git, procesos y un terminal acotado en tu PC con Windows, con aprobaciones firmadas, auditoría a prueba de manipulación y sin puertos abiertos. Beta pública en modo local, código abierto bajo MPL-2.0.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0c1117" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Vör Commander — piloto privado">
+  <meta property="og:title" content="Vör Commander — beta pública, open source">
   <meta property="og:description" content="El mismo poder sobre tu máquina, con seguridad que puedes demostrar: aprobaciones firmadas, auditoría y sin puertos abiertos.">
   <meta property="og:locale" content="es_ES">
-  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/styles.css">
-  <script src="assets/theme-init.js"></script>
-  <script src="assets/main.js" defer></script>
+  <meta property="og:locale:alternate" content="en_US">
+  <link rel="alternate" hreflang="es" href="https://vorcommander.app/">
+  <link rel="alternate" hreflang="en" href="https://vorcommander.app/en/">
+  <link rel="alternate" hreflang="x-default" href="https://vorcommander.app/">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/theme-init.js"></script>
+  <script src="/assets/main.js" defer></script>
+  <script src="/assets/waitlist.js" defer></script>
+  <script src="/assets/lang-switch.js" defer></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Saltar al contenido</a>
@@ -34,8 +41,9 @@
           <li><a href="#instalacion">Instalación</a></li>
           <li><a href="#faq">FAQ</a></li>
         </ul>
-        <a class="btn btn-primary btn-sm header-cta" href="#precio">Unirme al piloto</a>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema" aria-pressed="false">
+        <a class="lang-switch" href="/en/" hreflang="en" lang="en">English</a>
+        <a class="btn btn-primary btn-sm header-cta" href="#beta">Descargar</a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema" aria-pressed="false" data-label-to-light="Cambiar a tema claro" data-label-to-dark="Cambiar a tema oscuro">
           <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.7 14.3A8.5 8.5 0 0 1 9.7 3.3a.75.75 0 0 0-.98-.9A10 10 0 1 0 21.6 15.3a.75.75 0 0 0-.9-1z"/></svg>
           <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
         </button>
@@ -48,16 +56,17 @@
     <!-- Hero -->
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="wrap">
-        <span class="eyebrow">Piloto privado · Windows</span>
+        <span class="eyebrow">Beta pública · modo local · open source · Windows</span>
         <h1 id="hero-title">Tu asistente de IA trabaja en tu PC. <span>Tú decides qué puede tocar.</span></h1>
         <p class="lead">Vör Commander es un agente remoto con gateway MCP, escrito en Rust para Windows. Da a tu asistente de IA acceso controlado a archivos, git, procesos y un terminal acotado en tu máquina, con aprobaciones firmadas, auditoría a prueba de manipulación y sin abrir puertos de entrada.</p>
+        <p class="lead">Es código abierto (MPL-2.0) y cualquiera puede instalarlo y usarlo en modo local en su PC con Windows. El acceso remoto alojado todavía no está abierto al público: va por lista de espera.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="#precio">Solicitar acceso al piloto</a>
-          <a class="btn btn-ghost" href="#como-funciona">Ver cómo funciona</a>
+          <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Descargar</a>
+          <a class="btn btn-ghost" href="#lista-espera">Lista de espera del acceso remoto</a>
         </div>
-        <p class="hero-note">El mismo poder sobre tu máquina, con seguridad que puedes demostrar.</p>
+        <p class="hero-note">El ZIP de la primera versión llega pronto. Hoy ya puedes <a href="https://github.com/BrierAinz/vor-commander#readme">compilarlo desde el código</a>.</p>
         <ul class="clients" aria-label="Asistentes compatibles">
-          <li>Claude <small>(conector remoto)</small></li>
+          <li>Claude <small>(conector remoto, con lista de espera)</small></li>
           <li>ChatGPT <small>(conector de solo lectura, validado)</small></li>
           <li>Cursor <small>(en el piloto)</small></li>
           <li>VS Code <small>(en el piloto)</small></li>
@@ -286,12 +295,12 @@
               </tr>
               <tr>
                 <th scope="row">Plan gratuito</th>
-                <td>Piloto privado</td>
+                <td>Beta pública gratuita (modo local)</td>
                 <td>Free: 10.000 llamadas a herramientas al mes</td>
               </tr>
               <tr>
                 <th scope="row">Plan de pago</th>
-                <td>Sin precio público todavía</td>
+                <td>Acceso remoto: lista de espera</td>
                 <td>Pro: 20 USD al mes</td>
               </tr>
             </tbody>
@@ -305,12 +314,12 @@
     <section id="instalacion" aria-labelledby="instalacion-title">
       <div class="wrap">
         <div class="section-head">
-          <span class="eyebrow">Instalación <span class="tag tag-soon">Piloto</span></span>
-          <h2 id="instalacion-title">Instalación local del piloto</h2>
+          <span class="eyebrow">Instalación <span class="tag tag-soon">Beta</span></span>
+          <h2 id="instalacion-title">Instalación local de la beta</h2>
           <p class="lead">Un paquete ZIP por usuario, sin servicio de Windows, sin permisos de administrador y sin tocar el firewall. El gateway local escucha solo en loopback.</p>
         </div>
         <div class="callout" role="note">
-          <p><strong>Esto describe el instalador del piloto.</strong> Todavía no es una versión pública: los pasos pueden cambiar y el paquete se entrega a los participantes.</p>
+          <p><strong>Ya disponible: <a href="https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.1">v0.1.0-beta.1</a></strong> en GitHub Releases. Los binarios aún no están firmados con Authenticode: comprueba el SHA-256 publicado antes de ejecutar, o compílalo tú desde el código siguiendo el <a href="https://github.com/BrierAinz/vor-commander#readme">README</a>. Es una beta: los pasos pueden cambiar.</p>
         </div>
         <ol class="steps">
           <li>
@@ -345,21 +354,73 @@
       </div>
     </section>
 
-    <!-- Precio -->
-    <section class="alt" id="precio" aria-labelledby="precio-title">
-      <div class="wrap pricing">
-        <span class="eyebrow">Precio</span>
-        <h2 id="precio-title">Piloto privado</h2>
-        <p class="lead lead-center">Aún no publicamos precios. Estamos trabajando con un grupo reducido de usuarios de Windows para cerrar el producto con ellos.</p>
-        <div class="card">
-          <h3>Qué incluye el piloto</h3>
-          <ul>
-            <li>Instalación local del agente en tu PC con Windows.</li>
-            <li>Acceso a las herramientas disponibles hoy y a las del piloto según se publiquen.</li>
-            <li>Contacto directo con el equipo para dar tu opinión.</li>
-          </ul>
-          <a class="btn btn-primary" href="mailto:contact@brierstudios.com?subject=Piloto%20V%C3%B6r%20Commander">Solicitar acceso por correo</a>
+    <!-- Beta pública -->
+    <section class="alt" id="beta" aria-labelledby="beta-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow">Beta pública</span>
+          <h2 id="beta-title">Beta pública — modo local, open source</h2>
+          <p class="lead">Cualquiera puede instalar Vör Commander y usarlo en su PC con Windows, gratis y con todo el código a la vista. El acceso remoto alojado va aparte, con lista de espera.</p>
         </div>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>Modo local <span class="tag tag-live">Abierto</span></h3>
+            <ul>
+              <li>Agente y gateway en tu propio PC, sin cuenta y sin coste.</li>
+              <li>Código abierto bajo MPL-2.0 en <a href="https://github.com/BrierAinz/vor-commander">GitHub</a>.</li>
+              <li>El ZIP de la primera versión llega pronto; hoy puedes <a href="https://github.com/BrierAinz/vor-commander#readme">compilarlo desde el código</a>.</li>
+            </ul>
+            <div class="card-actions">
+              <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Descargar</a>
+              <a class="btn btn-ghost" href="https://github.com/BrierAinz/vor-commander#readme">Compilar desde el código</a>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Acceso remoto alojado <span class="tag tag-soon">Lista de espera</span></h3>
+            <p>El gateway gestionado, para usar Vör Commander desde Claude o ChatGPT en la nube, todavía no está abierto al público: el aislamiento entre organizaciones está probado en local pero aún no desplegado, y no abriremos el servicio antes de que lo esté.</p>
+            <div class="card-actions">
+              <a class="btn btn-ghost" href="#lista-espera">Apuntarme a la lista de espera</a>
+            </div>
+          </div>
+        </div>
+        <p class="note">¿Preguntas, ideas o fallos? Escríbenos en <a href="https://github.com/BrierAinz/vor-commander/discussions">GitHub Discussions</a> o, si prefieres el correo, en <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
+      </div>
+    </section>
+
+    <!-- Lista de espera -->
+    <section id="lista-espera" aria-labelledby="lista-espera-title">
+      <div class="wrap waitlist">
+        <div class="section-head">
+          <span class="eyebrow">Acceso remoto</span>
+          <h2 id="lista-espera-title">Lista de espera del acceso remoto</h2>
+          <p class="lead">Déjanos tu correo y te avisaremos cuando podamos darte acceso al gateway alojado.</p>
+        </div>
+        <form class="card waitlist-card" id="waitlist-form" action="/api/waitlist" method="post"
+              data-msg-turnstile-pending="Espera a que termine la verificación anti-bots e inténtalo de nuevo."
+              data-msg-sending="Enviando…"
+              data-msg-bad-response="Respuesta inesperada del servidor. Inténtalo más tarde."
+              data-msg-unexpected="Error inesperado."
+              data-msg-network="No hay conexión con el servidor. Inténtalo de nuevo o escríbenos a contact@brierstudios.com.">
+          <input type="hidden" name="lang" value="es">
+          <div class="field">
+            <label for="wl-email">Correo electrónico <span class="field-req">(obligatorio)</span></label>
+            <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email" inputmode="email" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="wl-name">Nombre <span class="field-opt">(opcional)</span></label>
+            <input id="wl-name" name="name" type="text" maxlength="200" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="wl-use-case">¿Para qué lo usarías? <span class="field-opt">(opcional)</span></label>
+            <textarea id="wl-use-case" name="use_case" rows="4" maxlength="1000" aria-describedby="wl-use-case-count"></textarea>
+            <span class="field-hint" id="wl-use-case-count">Máximo 1000 caracteres</span>
+          </div>
+          <div class="cf-turnstile" data-sitekey="0x4AAAAAAFDNV7vMOq8tbebd" data-language="es" data-size="flexible"></div>
+          <noscript><p class="note">La verificación anti-bots necesita JavaScript. Si lo tienes desactivado, escríbenos a <a href="mailto:contact@brierstudios.com?subject=Lista%20de%20espera%20V%C3%B6r%20Commander">contact@brierstudios.com</a>.</p></noscript>
+          <button class="btn btn-primary" type="submit">Unirme a la lista de espera</button>
+          <p class="form-status" id="waitlist-status" role="status" aria-live="polite"></p>
+          <p class="privacy"><strong>Privacidad.</strong> Guardamos tu correo, el nombre y el uso previsto si los indicas, la fecha, tu navegador (user agent, recortado) y una huella (hash) de tu IP, nunca la IP en claro, que solo sirve para frenar envíos abusivos. Usamos estos datos únicamente para escribirte sobre el acceso remoto. La verificación anti-bots la hace Cloudflare Turnstile. Puedes pedir que los borremos en <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
+        </form>
       </div>
     </section>
 
@@ -373,7 +434,7 @@
         <div class="faq">
           <details>
             <summary>¿En qué sistemas funciona?</summary>
-            <div><p>El agente está escrito en Rust y el piloto es para Windows. La aprobación interactiva del propietario hoy solo existe en Windows.</p></div>
+            <div><p>El agente está escrito en Rust y la beta es para Windows. La aprobación interactiva del propietario hoy solo existe en Windows.</p></div>
           </details>
           <details>
             <summary>¿La IA puede escribir o ejecutar comandos sin que yo lo sepa?</summary>
@@ -393,7 +454,7 @@
           </details>
           <details>
             <summary>¿Qué asistentes puedo usar?</summary>
-            <div><p>Hoy, Claude como conector remoto (OAuth) con todas las herramientas: lectura, git, procesos, escritura aprobada y terminal. ChatGPT: conector de solo lectura (validado). El instalador del piloto enlaza Cursor y VS Code automáticamente; para Claude Desktop en local llegará un adaptador stdio <span class="tag tag-soon">Próximamente</span>.</p></div>
+            <div><p>Hoy, Claude como conector remoto (OAuth) con todas las herramientas: lectura, git, procesos, escritura aprobada y terminal. ChatGPT: conector de solo lectura (validado). Ambos conectores remotos pasan por el gateway alojado, que de momento va por <a href="#lista-espera">lista de espera</a>. El instalador local enlaza Cursor y VS Code automáticamente; para Claude Desktop en local llegará un adaptador stdio <span class="tag tag-soon">Próximamente</span>.</p></div>
           </details>
           <details>
             <summary>¿Es código abierto?</summary>
@@ -401,7 +462,15 @@
           </details>
           <details>
             <summary>¿Cuánto cuesta?</summary>
-            <div><p>Durante el piloto privado no hay precio público. Escríbenos para participar.</p></div>
+            <div><p>La beta pública en modo local es gratuita. El acceso remoto alojado aún no tiene precio público: apúntate a la <a href="#lista-espera">lista de espera</a> y te escribiremos.</p></div>
+          </details>
+          <details>
+            <summary>¿Por qué el acceso remoto va con lista de espera?</summary>
+            <div><p>Porque el aislamiento entre organizaciones del gateway alojado está probado en local pero todavía no desplegado. Hasta que lo esté, no abrimos el servicio remoto al público. El modo local no depende de él y está abierto desde hoy.</p></div>
+          </details>
+          <details>
+            <summary>¿Dónde pregunto o doy mi opinión?</summary>
+            <div><p>En <a href="https://github.com/BrierAinz/vor-commander/discussions">GitHub Discussions</a>. Los fallos de seguridad, por la vía privada que indica <a href="https://github.com/BrierAinz/vor-commander/blob/main/SECURITY.md">SECURITY.md</a>. También puedes escribir a <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p></div>
           </details>
         </div>
       </div>
@@ -412,14 +481,17 @@
   <footer class="site-footer">
     <div class="wrap footer-inner">
       <div>
-        <p><strong>Vör Commander</strong> · piloto privado para Windows.</p>
+        <p><strong>Vör Commander</strong> · beta pública para Windows, código abierto bajo MPL-2.0.</p>
         <p>Desktop Commander es una marca de sus respectivos titulares; se cita solo a efectos comparativos.</p>
       </div>
       <ul class="footer-links" aria-label="Pie de página">
         <li><a href="#como-funciona">Cómo funciona</a></li>
         <li><a href="#seguridad">Seguridad</a></li>
         <li><a href="#comparativa">Comparativa</a></li>
-        <li><a href="#precio">Contacto</a></li>
+        <li><a href="#beta">Descargar</a></li>
+        <li><a href="https://github.com/BrierAinz/vor-commander">GitHub</a></li>
+        <li><a href="https://github.com/BrierAinz/vor-commander/discussions">Discussions</a></li>
+        <li><a href="mailto:contact@brierstudios.com">Contacto</a></li>
       </ul>
     </div>
   </footer>

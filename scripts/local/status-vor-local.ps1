@@ -9,7 +9,7 @@ $gateway = Wait-VorHttp 'http://127.0.0.1:8742/healthz' 2
 $relay = Wait-VorHttp 'http://127.0.0.1:8789/healthz' 2
 $tcp = $false
 try { $c = [Net.Sockets.TcpClient]::new(); $c.Connect('127.0.0.1',8790); $tcp=$true; $c.Dispose() } catch {}
-[pscustomobject]@{
+$result = [pscustomobject]@{
   DeviceId = $config.device_id
   ControlPlane = $cpAlive
   Agent = $agentAlive
@@ -17,5 +17,6 @@ try { $c = [Net.Sockets.TcpClient]::new(); $c.Connect('127.0.0.1',8790); $tcp=$t
   Relay8789 = $relay
   PrivateGrpc8790 = $tcp
   McpUrl = 'http://127.0.0.1:8742/mcp'
-} | Format-List
-if (-not ($cpAlive -and $agentAlive -and $gateway -and $relay -and $tcp)) { exit 1 }
+}
+if (-not ($cpAlive -and $agentAlive -and $gateway -and $relay -and $tcp)) { throw 'One or more Vor Local Pilot components are not healthy.' }
+$result

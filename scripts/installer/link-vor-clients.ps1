@@ -7,6 +7,15 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:BackupRecords = @{}
+$oldRecordPath = Join-Path $InstallRoot 'state\local\linked-clients.json'
+if (Test-Path -LiteralPath $oldRecordPath) {
+  # PS 5.1 emits a JSON array as one pipeline object; assign first so @() does not nest it.
+  $oldRecords = Get-Content -Raw -LiteralPath $oldRecordPath | ConvertFrom-Json
+  foreach ($oldRecord in @($oldRecords)) {
+    if ($oldRecord.PSObject.Properties['backup'] -and $oldRecord.backup) { $script:BackupRecords[[string]$oldRecord.path] = $oldRecord.backup }
+  }
+}
 
 function Write-JsonEntry([string]$Path, [string]$Container, [hashtable]$Entry) {
   $parent = Split-Path -Parent $Path
@@ -17,6 +26,7 @@ function Write-JsonEntry([string]$Path, [string]$Container, [hashtable]$Entry) {
     if ($raw.Trim()) { $document = $raw | ConvertFrom-Json }
     if (-not (Test-Path -LiteralPath ($Path + '.vor-backup'))) {
       Copy-Item -LiteralPath $Path -Destination ($Path + '.vor-backup')
+      $script:BackupRecords[$Path] = [ordered]@{ path=($Path + '.vor-backup'); sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath ($Path + '.vor-backup')).Hash.ToLowerInvariant(); created=$true }
     }
   }
   if (-not $document.PSObject.Properties[$Container]) {
@@ -44,9 +54,11 @@ $token = $null
 if (-not $SkipClaudeNotice) {
   Write-Warning "Claude Desktop was not modified at $ClaudeConfigPath. Its documented JSON format launches local stdio servers, while Vor Form A exposes Streamable HTTP. Add the deployed HTTPS endpoint through Settings > Connectors when Form B is available."
 }
+$cursorFull = [IO.Path]::GetFullPath($CursorConfigPath)
+$vscodeFull = [IO.Path]::GetFullPath($VsCodeConfigPath)
 $records = @(
-  [ordered]@{ client='cursor'; path=[IO.Path]::GetFullPath($CursorConfigPath); container='mcpServers' },
-  [ordered]@{ client='vscode'; path=[IO.Path]::GetFullPath($VsCodeConfigPath); container='servers' }
+  [ordered]@{ client='cursor'; path=$cursorFull; container='mcpServers'; backup=$script:BackupRecords[$cursorFull] },
+  [ordered]@{ client='vscode'; path=$vscodeFull; container='servers'; backup=$script:BackupRecords[$vscodeFull] }
 )
 $recordPath = Join-Path $InstallRoot 'state\local\linked-clients.json'
 $encoding = New-Object System.Text.UTF8Encoding($false)
