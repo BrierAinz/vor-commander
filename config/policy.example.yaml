@@ -8,10 +8,10 @@ auto_write:
   max_bytes_per_minute: 8388608
 
 filesystem:
-  - path: "D:\\Projects\\vor-commander\\state\\local\\m1-canary"
+  - path: "D:\\Workspaces\\vor-commander\\state\\local\\m1-canary"
     read: auto
     write: approval
-  - path: "D:\\Proyectos"
+  - path: "D:\\Workspaces"
     read: auto
     write: auto
   - path: "D:\\"

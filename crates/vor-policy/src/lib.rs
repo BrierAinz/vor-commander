@@ -840,7 +840,7 @@ mod tests {
     fn m1_canary_write_requires_approval_without_changing_project_default() {
         let canary = engine().evaluate(&request(
             "filesystem.write",
-            r"D:\Projects\vor-commander\state\local\m1-canary\live-write.txt",
+            r"D:\Workspaces\vor-commander\state\local\m1-canary\live-write.txt",
         ));
         assert_eq!(canary.kind, PolicyDecisionKind::Approval);
 
