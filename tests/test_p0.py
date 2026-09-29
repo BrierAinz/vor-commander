@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
+INTERNAL_FILE_SKIP_REASON = "fichero interno, excluido del export publico"
 
 REQUIRED = [
     "README.md",
@@ -20,11 +23,15 @@ REQUIRED = [
 
 
 def test_required_blueprint_files_exist():
+    if not (ROOT / "AGENTS.md").is_file():
+        pytest.skip(INTERNAL_FILE_SKIP_REASON)
     missing = [rel for rel in REQUIRED if not (ROOT / rel).is_file()]
     assert not missing, f"missing: {missing}"
 
 
 def test_lilith_boundary_is_explicit():
+    if not (ROOT / "AGENTS.md").is_file():
+        pytest.skip(INTERNAL_FILE_SKIP_REASON)
     text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert "lilith-cli" in text.lower()
     assert "receiving confirmation" in text.lower()
