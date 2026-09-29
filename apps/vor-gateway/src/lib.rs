@@ -718,7 +718,7 @@ impl CommanderServer {
 
     #[tool(
         name = "prepare_terminal",
-        description = "Prepare a bounded terminal.exec request on an authorized remote device. This never starts a process; it returns a device-policy approval challenge and an opaque request blob. Give request_base64 and challenge to scripts/local/approve-vor-request.ps1, review and approve there, then pass its approval_base64 output with the same request to commit_terminal."
+        description = "Run an exact safe-listed bounded command without a signature, or prepare any other terminal.exec request for signed approval. argv is structured and device policy decides; cwd, timeout and output budgets always apply."
     )]
     async fn prepare_terminal(
         &self,

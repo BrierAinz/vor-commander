@@ -29,9 +29,7 @@ $approval = .\scripts\local\approve-vor-request.ps1 `
   -DiffSummary '<prepare_edit diff_summary>'
 ```
 
-The script validates that the challenge is bound to the request, then shows the action, target path or working directory, structured terminal argv or edit diff, actor/device, expiry, timeout, and output budget. It signs only after the owner types `APPROVE`. The final output line is the `approval_base64` value to use with the unchanged request in `commit_write` or `commit_terminal`. Each approval is one-use; replay is rejected as `approval_replayed`.
-
-`-Confirm` is an explicit non-interactive confirmation intended for controlled automation and tests. It still prints and validates the complete summary before signing. Do not use it for requests the owner has not already reviewed.
+The script validates that the challenge is bound to the request, then shows the action, full target path or working directory, full structured terminal argv or edit diff, actor/device/organization, expiry, timeout, output budget, and the complete envelope SHA-256. The native Windows Yes/No dialog is mandatory; there is no non-interactive confirmation switch. The final output line is the `approval_base64` value to use with the unchanged request in `commit_write` or `commit_terminal`. Each approval is one-use; replay is rejected as `approval_replayed`.
 
 ## Startup choice
 

@@ -9,8 +9,7 @@ license.workspace = true
 vor-core = { path = "../vor-core" }
 vor-protocol = { path = "../vor-protocol" }
 vor-path = { path = "../vor-path" }
+vor-terminal = { path = "../vor-terminal" }
 serde.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
 tempfile.workspace = true

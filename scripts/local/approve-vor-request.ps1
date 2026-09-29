@@ -1,8 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$RequestBase64,
   [Parameter(Mandatory=$true)]$Challenge,
-  [string]$DiffSummary,
-  [switch]$Confirm
+  [string]$DiffSummary
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -32,10 +31,7 @@ try {
     Write-Host 'Diff summary supplied by prepare_edit:'
     Write-Host $DiffSummary
   }
-  $approved = $Confirm
-  if (-not $approved) { $approved = ((Read-Host 'Type APPROVE to sign this one-use request') -ceq 'APPROVE') }
-  if (-not $approved) { throw 'Approval declined by owner.' }
-  & $approver sign --approver-id $config.approver_id --secret-store $config.secret_store --request-file $requestFile --challenge-file $challengeFile --out $approvalFile --confirmed | Out-Host
+  & $approver sign --approver-id $config.approver_id --secret-store $config.secret_store --request-file $requestFile --challenge-file $challengeFile --out $approvalFile | Out-Host
   if ($LASTEXITCODE -ne 0) { throw 'Approval signing failed.' }
   $approval = (Get-Content -Raw -LiteralPath $approvalFile).Trim()
   Write-Output $approval

@@ -10,6 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use vor_approval::{ApprovalChallenge, ApproverAuthority, sign_approval};
+use vor_approver::{approval_summary, validate_binding};
 use vor_secrets::FileSecretStore;
 use vor_wire::{action_request_from_proto, approval_grant_to_proto, v1};
 
@@ -176,7 +177,6 @@ fn sign_command(args: &[String]) -> Result<(), AnyError> {
     let mut request_file = None::<PathBuf>;
     let mut challenge_file = None::<PathBuf>;
     let mut out = None::<PathBuf>;
-    let mut confirmed = false;
     let mut index = 0;
 
     while index < args.len() {
@@ -195,7 +195,6 @@ fn sign_command(args: &[String]) -> Result<(), AnyError> {
                 challenge_file = Some(next_value(args, &mut index, "--challenge-file")?.into())
             }
             "--out" => out = Some(next_value(args, &mut index, "--out")?.into()),
-            "--confirmed" => confirmed = true,
             other => return Err(format!("unsupported sign option: {other}").into()),
         }
         index += 1;
@@ -227,9 +226,8 @@ fn sign_command(args: &[String]) -> Result<(), AnyError> {
     validate_binding(&request, &challenge, now)?;
 
     let summary = approval_summary(&request, &challenge)?;
-    if !confirmed && !confirm_human(&summary)? {
-        return Err("approval declined by user".into());
-    }
+    require_confirmation(&summary)?;
+    validate_binding(&request, &challenge, now_unix_ms()?)?;
 
     let store = FileSecretStore::open(secret_store)?;
     let secret = store.get(&key_name)?;
@@ -314,164 +312,6 @@ fn challenge_from_json(value: &ChallengeJson) -> Result<ApprovalChallenge, AnyEr
     })
 }
 
-fn approval_summary(
-    request: &vor_protocol::ActionRequest,
-    challenge: &ApprovalChallenge,
-) -> Result<String, AnyError> {
-    match request.envelope.action.as_str() {
-        "filesystem.write" => {
-            let content_sha256 = request
-                .envelope
-                .parameters
-                .get("content_sha256")
-                .and_then(|value| value.as_str())
-                .ok_or("prepared write is missing content_sha256")?;
-            let expected_target_sha256 = request
-                .envelope
-                .parameters
-                .get("expected_target_sha256")
-                .and_then(|value| value.as_str())
-                .ok_or("prepared write is missing expected_target_sha256")?;
-            Ok(format!(
-                "Vör Commander requests permission to write a file.\n\nTarget:\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nContent SHA-256: {}\nExpected target SHA-256: {}\nExpires (Unix ms): {}\n\nThis approval is bound to this exact request and can be consumed only once.\n\nApprove?",
-                display_truncated(&request.envelope.target, 700),
-                request.envelope.actor_id,
-                request.envelope.device_id,
-                challenge.policy_id,
-                challenge
-                    .required_capability
-                    .as_deref()
-                    .unwrap_or("approval"),
-                challenge.request_id,
-                content_sha256,
-                expected_target_sha256,
-                challenge.expires_at_unix_ms,
-            ))
-        }
-        "terminal.exec" => {
-            let argv = request
-                .envelope
-                .parameters
-                .get("argv")
-                .and_then(|value| value.as_array())
-                .ok_or("prepared terminal request is missing argv")?;
-            let argv = argv
-                .iter()
-                .map(|value| {
-                    value
-                        .as_str()
-                        .ok_or("terminal argv contains a non-string value")
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let argv_json = serde_json::to_string(&argv)?;
-            let timeout_ms = request
-                .envelope
-                .parameters
-                .get("timeout_ms")
-                .and_then(|value| value.as_u64())
-                .ok_or("prepared terminal request is missing timeout_ms")?;
-            let max_output_bytes = request
-                .envelope
-                .parameters
-                .get("max_output_bytes")
-                .and_then(|value| value.as_u64())
-                .ok_or("prepared terminal request is missing max_output_bytes")?;
-            Ok(format!(
-                "Vör Commander requests permission to start a bounded terminal process.\n\nCWD:\n{}\n\nARGV (structured JSON):\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nTimeout: {} ms\nOutput budget: {} bytes\nExpires (Unix ms): {}\n\nThis approval is bound to this exact request and can be consumed only once. Poll/cancel do not authorize a new process.\n\nApprove?",
-                display_truncated(&request.envelope.target, 700),
-                display_truncated(&argv_json, 1400),
-                request.envelope.actor_id,
-                request.envelope.device_id,
-                challenge.policy_id,
-                challenge
-                    .required_capability
-                    .as_deref()
-                    .unwrap_or("approval"),
-                challenge.request_id,
-                timeout_ms,
-                max_output_bytes,
-                challenge.expires_at_unix_ms,
-            ))
-        }
-        "maintenance.apply" | "maintenance.recover" => {
-            let plan_sha256 = required_string_parameter(request, "plan_sha256")?;
-            let current_sha256 = required_string_parameter(request, "expected_current_sha256")?;
-            let staged_sha256 = required_string_parameter(request, "expected_staged_sha256")?;
-            let staged_executable = required_string_parameter(request, "staged_executable")?;
-            let allowed_root = required_string_parameter(request, "allowed_root")?;
-            let current_pid = request
-                .envelope
-                .parameters
-                .get("current_pid")
-                .and_then(|value| value.as_u64())
-                .ok_or("prepared maintenance request is missing current_pid")?;
-            Ok(format!(
-                "Vör Commander requests OWNER permission for self-maintenance.\n\nAction: {}\nTarget:\n{}\n\nStaged executable:\n{}\nAllowed root:\n{}\n\nActor: {}\nDevice: {}\nPolicy: {}\nCapability: {}\nRequest: {}\nCurrent PID: {}\nPlan SHA-256: {}\nCurrent SHA-256: {}\nStaged SHA-256: {}\n\nThis approval is bound to the exact plan/request and is consumed before any process stop or binary swap.\n\nApprove?",
-                request.envelope.action,
-                display_truncated(&request.envelope.target, 700),
-                display_truncated(staged_executable, 700),
-                display_truncated(allowed_root, 700),
-                request.envelope.actor_id,
-                request.envelope.device_id,
-                challenge.policy_id,
-                challenge
-                    .required_capability
-                    .as_deref()
-                    .unwrap_or("approval"),
-                challenge.request_id,
-                current_pid,
-                plan_sha256,
-                current_sha256,
-                staged_sha256,
-            ))
-        }
-        _ => Err(
-            "approver signs only filesystem.write, terminal.exec, or maintenance actions".into(),
-        ),
-    }
-}
-
-fn required_string_parameter<'a>(
-    request: &'a vor_protocol::ActionRequest,
-    name: &str,
-) -> Result<&'a str, AnyError> {
-    request
-        .envelope
-        .parameters
-        .get(name)
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| format!("prepared maintenance request is missing {name}").into())
-}
-
-fn validate_binding(
-    request: &vor_protocol::ActionRequest,
-    challenge: &ApprovalChallenge,
-    now_unix_ms: u64,
-) -> Result<(), AnyError> {
-    if !matches!(
-        request.envelope.action.as_str(),
-        "filesystem.write" | "terminal.exec" | "maintenance.apply" | "maintenance.recover"
-    ) {
-        return Err(
-            "approver signs only filesystem.write, terminal.exec, or maintenance actions".into(),
-        );
-    }
-    if request.envelope.request_id != challenge.request_id
-        || request.envelope_digest != challenge.envelope_digest
-    {
-        return Err("approval challenge is not bound to the prepared request".into());
-    }
-    if request.envelope.expires_at_unix_ms <= now_unix_ms {
-        return Err("prepared request has expired".into());
-    }
-    if challenge.expires_at_unix_ms <= now_unix_ms
-        || challenge.expires_at_unix_ms > request.envelope.expires_at_unix_ms
-    {
-        return Err("approval challenge expiry is invalid".into());
-    }
-    Ok(())
-}
-
 fn validate_approver_id(value: &str) -> Result<(), AnyError> {
     if value.trim().is_empty()
         || value.len() > 128
@@ -496,13 +336,24 @@ fn now_unix_ms() -> Result<u64, AnyError> {
     Ok(u64::try_from(elapsed.as_millis())?)
 }
 
-fn display_truncated(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
-        return value.to_owned();
+fn require_confirmation(summary: &str) -> Result<(), AnyError> {
+    if confirm_human(summary)? {
+        Ok(())
+    } else {
+        Err("approval declined by user".into())
     }
-    let mut out = value.chars().take(max_chars).collect::<String>();
-    out.push('…');
-    out
+}
+
+#[cfg(test)]
+fn require_injected_confirmation<F>(summary: &str, confirm: F) -> Result<(), AnyError>
+where
+    F: FnOnce(&str) -> Result<bool, AnyError>,
+{
+    if confirm(summary)? {
+        Ok(())
+    } else {
+        Err("approval declined by user".into())
+    }
 }
 
 #[cfg(windows)]
@@ -536,11 +387,9 @@ fn print_help() {
     );
     println!("  vor-approver describe --request-file REQUEST.b64 --challenge-file CHALLENGE.json");
     println!(
-        "  vor-approver sign --approver-id ID --secret-store DIR --request-file REQUEST.b64 --challenge-file CHALLENGE.json --out APPROVAL.b64 [--confirmed]"
+        "  vor-approver sign --approver-id ID --secret-store DIR --request-file REQUEST.b64 --challenge-file CHALLENGE.json --out APPROVAL.b64"
     );
-    println!(
-        "Signing requires an interactive Windows Yes/No confirmation unless --confirmed is supplied by a wrapper that already obtained explicit owner confirmation."
-    );
+    println!("Signing always requires an interactive Windows Yes/No confirmation.");
 }
 
 #[cfg(test)]
@@ -788,5 +637,47 @@ mod tests {
             approval_nonce: [7; 32],
         };
         assert!(validate_binding(&request, &challenge, now).is_err());
+    }
+
+    #[test]
+    fn tests_inject_confirmation_without_a_release_cli_bypass() {
+        let mut displayed = String::new();
+        require_injected_confirmation("exact summary", |summary| {
+            displayed.push_str(summary);
+            Ok(true)
+        })
+        .unwrap();
+        assert_eq!(displayed, "exact summary");
+
+        let error = require_injected_confirmation("exact summary", |_| Ok(false)).unwrap_err();
+        assert_eq!(error.to_string(), "approval declined by user");
+    }
+
+    #[test]
+    fn removed_confirmed_option_is_rejected_before_signing() {
+        let args = vec!["--confirmed".to_owned()];
+        let error = sign_command(&args).unwrap_err();
+        assert_eq!(error.to_string(), "unsupported sign option: --confirmed");
+    }
+
+    #[test]
+    fn summary_shows_the_full_bound_envelope_digest() {
+        let now = 10_000;
+        let request = request(now);
+        let challenge = ApprovalChallenge {
+            request_id: request.envelope.request_id.clone(),
+            envelope_digest: request.envelope_digest,
+            policy_id: "policy-1".into(),
+            required_capability: None,
+            expires_at_unix_ms: now + 30_000,
+            approval_nonce: [7; 32],
+        };
+
+        let summary = approval_summary(&request, &challenge).unwrap();
+        assert!(summary.contains(&format!(
+            "Envelope SHA-256: {}",
+            hex::encode(request.envelope_digest)
+        )));
+        assert!(summary.contains("Organization: local"));
     }
 }

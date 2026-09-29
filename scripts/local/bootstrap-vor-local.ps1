@@ -48,7 +48,8 @@ foreach ($root in $resolvedRoots) {
   $policyLines += '    read: auto'
   $policyLines += '    write: approval'
 }
-$policyLines += @('','terminal:','  default: approval','  inline_eval: elevated_approval','  project_tests: approval','  destructive: deny','  elevated: deny','','process:','  list: auto','  inspect: auto','  terminate: approval','','browser:','  authenticated_session_use: deny','  secret_extraction: deny','  publish: deny','  purchase: deny','','desktop:','  enabled: false','','network:','  public_listener_fallback: deny','','audit:','  required: true','  fail_if_unwritable: true','')
+$escapedGit = $git.Replace('\','\\').Replace('"','\"')
+$policyLines += @('','terminal:','  default: approval','  inline_eval: elevated_approval','  project_tests: approval','  destructive: deny','  elevated: deny','  safe_executable_paths:',"    - `"$escapedGit`"",'','process:','  list: auto','  inspect: auto','  terminate: approval','','browser:','  authenticated_session_use: deny','  secret_extraction: deny','  publish: deny','  purchase: deny','','desktop:','  enabled: false','','network:','  public_listener_fallback: deny','','audit:','  required: true','  fail_if_unwritable: true','')
 if (-not (Test-Path -LiteralPath $policy)) {
   Write-Utf8NoBom $policy ($policyLines -join "`r`n")
 } else {

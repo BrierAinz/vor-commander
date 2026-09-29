@@ -1,5 +1,5 @@
 param(
-  [string]$Version = '0.1.0-beta.3',
+  [string]$Version = '0.1.0-beta.4',
   [string]$OutputDirectory = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')) 'target\pilot-package'),
   [string]$CertificateThumbprint,
   [string]$TimestampUrl = 'http://timestamp.digicert.com',

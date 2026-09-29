@@ -114,10 +114,19 @@ impl Broker {
             target: request.envelope.target.clone(),
             outcome: outcome.into(),
             envelope_digest: request.envelope_digest,
-            authority: if decision.kind == PolicyDecisionKind::Auto {
+            authority: if decision.reason_code == "terminal_safe_list" {
+                "safe-list"
+            } else if decision.kind == PolicyDecisionKind::Auto {
                 "policy"
             } else {
                 "signature"
+            }
+            .into(),
+            approval: match (decision.reason_code.as_str(), decision.kind) {
+                ("terminal_safe_list", _) => "safe-list",
+                (_, PolicyDecisionKind::Approval) => "required",
+                (_, PolicyDecisionKind::Deny) => "denied",
+                _ => "not-required",
             }
             .into(),
             policy_rule: decision.reason_code.clone(),
@@ -188,6 +197,7 @@ impl Broker {
             outcome: outcome.to_owned(),
             envelope_digest: request.envelope_digest,
             authority: "signature".into(),
+            approval: "signature".into(),
             policy_rule: self.policy.evaluate(request).reason_code,
             policy_hash: self.policy.policy_hash().to_owned(),
             content_bytes: 0,
@@ -221,8 +231,18 @@ impl Broker {
             target: request.envelope.target.clone(),
             outcome: outcome.into(),
             envelope_digest: request.envelope_digest,
-            authority: if authorization.is_auto() {
+            authority: if authorization.decision.reason_code == "terminal_safe_list" {
+                "safe-list"
+            } else if authorization.is_auto() {
                 "policy"
+            } else {
+                "signature"
+            }
+            .into(),
+            approval: if authorization.decision.reason_code == "terminal_safe_list" {
+                "safe-list"
+            } else if authorization.is_auto() {
+                "not-required"
             } else {
                 "signature"
             }

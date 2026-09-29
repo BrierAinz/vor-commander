@@ -65,3 +65,4 @@ def test_ci_enforces_rust_quality_gates():
     assert "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings" in text
     assert "cargo audit" in text
     assert "cargo build --release --workspace --locked" in text
+    assert "powershell.exe -NoProfile -File tests/check_vor_approver_release.ps1" in text

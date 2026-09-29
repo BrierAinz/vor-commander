@@ -13,12 +13,13 @@ use vor_core::{Authorization, ExecutionAuthorization};
 use vor_protocol::PolicyDecisionKind;
 
 #[cfg(windows)]
-use std::os::windows::{ffi::OsStrExt, fs::MetadataExt};
+use std::os::windows::{ffi::OsStrExt, fs::MetadataExt, io::AsRawHandle};
 #[cfg(all(windows, test))]
 use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
-    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle, MOVEFILE_REPLACE_EXISTING,
+    MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
 
 #[cfg(windows)]
@@ -142,7 +143,7 @@ impl FsWorker {
         {
             return Err(FsError::InvalidEditParameters);
         }
-        let target = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let target = self.resolve_read_target(Path::new(&authorization.request.envelope.target))?;
         let original = fs::read(&target)?;
         let decoded = decode_edit_text(&original)?;
         let newline = detected_newline(&decoded.text);
@@ -207,7 +208,7 @@ impl FsWorker {
         max_bytes: usize,
     ) -> Result<Vec<u8>, FsError> {
         ensure_auto_action(authorization, "filesystem.read")?;
-        let target = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let target = self.resolve_read_target(Path::new(&authorization.request.envelope.target))?;
         let len = fs::metadata(&target)?.len();
         if len > max_bytes as u64 {
             return Err(FsError::ReadLimitExceeded { len, max_bytes });
@@ -229,7 +230,7 @@ impl FsWorker {
                 max_bytes,
             });
         }
-        let target = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let target = self.resolve_read_target(Path::new(&authorization.request.envelope.target))?;
         let mut file = fs::File::open(target)?;
         file.seek(SeekFrom::Start(offset))?;
         let mut output = Vec::new();
@@ -248,7 +249,7 @@ impl FsWorker {
         if line_start == 0 {
             return Err(FsError::InvalidParameters);
         }
-        let target = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let target = self.resolve_read_target(Path::new(&authorization.request.envelope.target))?;
         let bytes = fs::read(target)?;
         let mut output = Vec::new();
         for line in bytes
@@ -277,7 +278,8 @@ impl FsWorker {
         if depth > MAX_LIST_DEPTH || max_entries == 0 || max_entries > MAX_LIST_ENTRIES {
             return Err(FsError::InvalidParameters);
         }
-        let root = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let root =
+            self.resolve_exploration_target(Path::new(&authorization.request.envelope.target))?;
         if !fs::metadata(&root)?.is_dir() {
             return Err(FsError::UnsafePath);
         }
@@ -319,7 +321,8 @@ impl FsWorker {
         if max_results == 0 || max_results > MAX_SEARCH_RESULTS {
             return Err(FsError::InvalidParameters);
         }
-        let root = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let root =
+            self.resolve_exploration_target(Path::new(&authorization.request.envelope.target))?;
         let matcher = glob_regex(pattern)?;
         let started = Instant::now();
         let mut output = Vec::new();
@@ -385,7 +388,8 @@ impl FsWorker {
         {
             return Err(FsError::InvalidParameters);
         }
-        let root = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let root =
+            self.resolve_exploration_target(Path::new(&authorization.request.envelope.target))?;
         let file_matcher = glob_regex(file_glob)?;
         let query_regex = if regex {
             Some(Regex::new(query).map_err(|_| FsError::InvalidPattern)?)
@@ -457,7 +461,8 @@ impl FsWorker {
 
     pub fn file_info(&self, authorization: &Authorization) -> Result<FileInfo, FsError> {
         ensure_auto_action(authorization, "filesystem.info")?;
-        let path = self.resolve_existing(Path::new(&authorization.request.envelope.target))?;
+        let path =
+            self.resolve_exploration_target(Path::new(&authorization.request.envelope.target))?;
         let metadata = fs::metadata(&path)?;
         Ok(FileInfo {
             path: path.to_string_lossy().into_owned(),
@@ -498,6 +503,12 @@ impl FsWorker {
                 }
                 let resolved = fs::canonicalize(&path)?;
                 self.ensure_allowed(&resolved)?;
+                if vor_path::sensitive_path(&resolved) {
+                    continue;
+                }
+                if metadata.is_file() && has_multiple_hardlinks(&resolved)? {
+                    continue;
+                }
                 if !visitor(&resolved, &metadata)? {
                     return Ok(());
                 }
@@ -644,6 +655,20 @@ impl FsWorker {
         let resolved = fs::canonicalize(target)?;
         self.ensure_allowed(&resolved)?;
         Ok(resolved)
+    }
+
+    fn resolve_exploration_target(&self, target: &Path) -> Result<PathBuf, FsError> {
+        let resolved = self.resolve_existing(target)?;
+        if vor_path::sensitive_path(&resolved)
+            || (resolved.is_file() && has_multiple_hardlinks(&resolved)?)
+        {
+            return Err(FsError::SensitivePath);
+        }
+        Ok(resolved)
+    }
+
+    fn resolve_read_target(&self, target: &Path) -> Result<PathBuf, FsError> {
+        self.resolve_exploration_target(target)
     }
 
     fn resolve_write_target(&self, target: &Path) -> Result<PathBuf, FsError> {
@@ -855,6 +880,29 @@ fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
     #[cfg(not(windows))]
     {
         false
+    }
+}
+
+fn has_multiple_hardlinks(path: &Path) -> Result<bool, FsError> {
+    #[cfg(windows)]
+    {
+        let file = fs::File::open(path)?;
+        let mut information = BY_HANDLE_FILE_INFORMATION::default();
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), &mut information) } == 0
+        {
+            return Err(FsError::Io(io::Error::last_os_error()));
+        }
+        Ok(information.nNumberOfLinks > 1)
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        Ok(fs::metadata(path)?.nlink() > 1)
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = path;
+        Ok(false)
     }
 }
 
@@ -1143,6 +1191,8 @@ pub enum FsError {
     UnsafePath,
     #[error("path resolves outside configured roots")]
     OutsideAllowedRoots,
+    #[error("exploration of a sensitive path is denied")]
+    SensitivePath,
     #[error("reparse point is not allowed in filesystem worker path: {0}")]
     ReparsePoint(PathBuf),
     #[error("authorization request and policy decision do not match")]
@@ -1431,6 +1481,88 @@ mod tests {
             };
             assert!(matches!(result, Err(FsError::UnsafePath)));
         }
+    }
+
+    #[test]
+    fn exploration_tools_hide_and_reject_sensitive_paths() {
+        let root = tempdir().unwrap();
+        let sensitive = root.path().join(".git");
+        fs::create_dir(&sensitive).unwrap();
+        fs::write(sensitive.join("config"), "needle").unwrap();
+        fs::write(root.path().join("visible.txt"), "needle").unwrap();
+        let worker =
+            FsWorker::new([root.path().to_path_buf()], root.path().join("journal")).unwrap();
+
+        let listed = worker
+            .list_directory(&read_authorization("filesystem.list", root.path()), 4, 100)
+            .unwrap();
+        assert!(listed.iter().all(|entry| !entry.path.contains(".git")));
+        let files = worker
+            .search_files(
+                &read_authorization("filesystem.search_files", root.path()),
+                "**",
+                100,
+            )
+            .unwrap();
+        assert!(files.iter().all(|path| !path.contains(".git")));
+        let matches = worker
+            .search_content(
+                &read_authorization("filesystem.search_content", root.path()),
+                "needle",
+                false,
+                "**",
+                100,
+                1024,
+            )
+            .unwrap();
+        assert_eq!(matches.matches.len(), 1);
+        assert!(matches.matches[0].file.ends_with("visible.txt"));
+        assert!(matches!(
+            worker.file_info(&read_authorization("filesystem.info", &sensitive)),
+            Err(FsError::SensitivePath)
+        ));
+        assert!(matches!(
+            worker.read(&read_authorization(
+                "filesystem.read",
+                &sensitive.join("config")
+            )),
+            Err(FsError::SensitivePath)
+        ));
+    }
+
+    #[test]
+    fn hardlink_to_sensitive_file_is_not_read_or_explored() {
+        let root = tempdir().unwrap();
+        let sensitive = root.path().join(".env");
+        let disguised = root.path().join("innocent.txt");
+        fs::write(&sensitive, "SECRET=not-for-tools").unwrap();
+        fs::hard_link(&sensitive, &disguised).unwrap();
+        let worker =
+            FsWorker::new([root.path().to_path_buf()], root.path().join("journal")).unwrap();
+
+        assert!(matches!(
+            worker.read(&read_authorization("filesystem.read", &disguised)),
+            Err(FsError::SensitivePath)
+        ));
+        assert!(matches!(
+            worker.file_info(&read_authorization("filesystem.info", &disguised)),
+            Err(FsError::SensitivePath)
+        ));
+        let listed = worker
+            .list_directory(&read_authorization("filesystem.list", root.path()), 2, 100)
+            .unwrap();
+        assert!(listed.iter().all(|entry| entry.path != disguised));
+        let matches = worker
+            .search_content(
+                &read_authorization("filesystem.search_content", root.path()),
+                "SECRET",
+                false,
+                "**",
+                100,
+                1024,
+            )
+            .unwrap();
+        assert!(matches.matches.is_empty());
     }
 
     #[test]

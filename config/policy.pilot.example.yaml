@@ -12,6 +12,15 @@ terminal:
   project_tests: approval
   destructive: deny
   elevated: deny
+  # `mode: strict` disables this list. Only canonical absolute executables in
+  # this allowlist qualify; PATH is never trusted for unsigned execution.
+  safe_executable_paths:
+    - "C:\\Program Files\\Git\\cmd\\git.exe"
+  # Adding project test/build commands is equivalent to authorizing arbitrary
+  # project-controlled code (build.rs, package scripts, conftest/plugins, etc.).
+  safe_commands:
+    - executable: git
+      arguments: [status]
 
 process:
   list: auto

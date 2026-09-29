@@ -13,14 +13,14 @@ All the code in this repository (device agent, core crates, MCP gateway, relay, 
 ## Quick Start / Instalación rápida
 
 La beta local se distribuye para Windows 10/11 como `vor-pilot.zip` en
-[GitHub Releases](https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.3).
+[GitHub Releases](https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.4).
 Necesitas PowerShell 5.1 o posterior; no hace falta instalar Rust ni MSVC para
 usar el paquete publicado. Descarga también el fichero `.sha256`, verifica el
 paquete antes de ejecutarlo y sigue la guía paso a paso de
 [`docs/PILOT_INSTALLER_README.md`](docs/PILOT_INSTALLER_README.md).
 
 The local beta is distributed for Windows 10/11 as `vor-pilot.zip` on
-[GitHub Releases](https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.3).
+[GitHub Releases](https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.4).
 It requires PowerShell 5.1 or later; Rust and MSVC are only needed when building
 from source. Download the matching `.sha256` file, verify the package, and then
 follow [`docs/PILOT_INSTALLER_README.md`](docs/PILOT_INSTALLER_README.md).
@@ -33,7 +33,7 @@ A signed approval is an Ed25519 signature over the exact request digest (action,
 
 ## Why it is different
 
-- **Signed approvals.** Writes and terminal commands require an Ed25519 signature bound to the request digest. There is no shortcut `approved=true`.
+- **Signed approvals.** Writes and terminal commands outside the exact read-only verification safe list require an Ed25519 signature bound to the request digest. There is no shortcut `approved=true`.
 - **Tamper-evident audit.** Authorisations, approvals and executions are recorded in SQLite with a JSONL mirror, chained by hash. Signed checkpoints are stored outside the mutable event stream.
 - **Private transport, no inbound ports.** The agent dials out to the gateway over a private mTLS tunnel (with WSS as fallback). It never opens a public port to recover connectivity.
 - **Rooted folders, no escape.** Operations are confined to the folders you authorise. `..` and Windows reparse points (junctions, symbolic links) are rejected before policy is evaluated.
@@ -125,14 +125,21 @@ Mutation, requires signed approval:
 
 - `filesystem.write` via `prepare_write` / `commit_write`
 - `terminal.exec` via `prepare_terminal` / `commit_terminal`
+
+`prepare_terminal` also executes exact policy safe-list entries without a signature. The executable must match a configured canonical absolute `safe_executable_paths` entry; `PATH` is not trusted. Matching uses the complete structured argument vector and never parses or prefix-matches shell text. `mode: strict` disables this exception. Adding Cargo build/test commands, npm scripts or pytest is equivalent to authorizing arbitrary project-controlled code. The same cwd confinement, timeout, output budget and audit trail apply, with `approval: "safe-list"`; Git entries additionally use the shared hardened Git configuration.
 - `terminal.poll`, `terminal.cancel` (your own sessions only)
 
-In the pilot (source-only, not a public live capability yet):
+Public read-only exploration:
 
 - `filesystem.list` / `list_directory`
 - `filesystem.search_files` / `search_files`
 - `filesystem.search_content` / `search_content`
 - `filesystem.info` / `file_info`
+
+The four exploration tools are public read-only MCP tools. They share `vor-fs`/`vor-path` containment: configured roots, canonical paths, sensitive-path filtering, reparse-point rejection and Windows 8.3 handling. Device ceilings bound listing depth/results, search duration, content matches and bytes read per file; callers may request smaller limits but cannot enlarge them.
+
+In the pilot (source-only, not a public live capability yet):
+
 - `prepare_edit`: diff-based edits (up to 20 exact replacements, computed on the device, preserving encoding and line endings), committed through the same signed `commit_write` flow
 
 Browser remote actions, desktop remote actions, process termination and self-maintenance apply are not exposed as MCP tools. Multi-tenant isolation, the relay, the control plane and the Stripe billing integration (sandbox only) are in this repository but are not a deployed public capability yet.

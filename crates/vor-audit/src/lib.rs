@@ -33,6 +33,8 @@ pub struct AuditEvent {
     #[serde(default)]
     pub authority: String,
     #[serde(default)]
+    pub approval: String,
+    #[serde(default)]
     pub policy_rule: String,
     #[serde(default)]
     pub policy_hash: String,
@@ -670,6 +672,7 @@ mod tests {
             outcome: "auto".into(),
             envelope_digest: [9; 32],
             authority: "policy".into(),
+            approval: "not-required".into(),
             policy_rule: "filesystem_rule".into(),
             policy_hash: "hash".into(),
             content_bytes: 0,

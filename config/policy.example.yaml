@@ -30,6 +30,29 @@ terminal:
   project_tests: auto
   destructive: approval
   elevated: approval
+  # Canonical absolute paths only; PATH is never trusted for unsigned commands.
+  safe_executable_paths:
+    - "C:\\Program Files\\Git\\cmd\\git.exe"
+    - "C:\\Program Files\\nodejs\\node.exe"
+  # Exact argv only. Adding cargo check/test/clippy, npm test, or pytest here
+  # is equivalent to authorizing arbitrary project-controlled code execution.
+  safe_commands:
+    - executable: git
+      arguments: [status]
+    - executable: git
+      arguments: [diff]
+    - executable: git
+      arguments: [log]
+    - executable: git
+      arguments: [show]
+    - executable: git
+      arguments: [branch]
+    - executable: cargo
+      arguments: [fmt, "--check"]
+    - executable: cargo
+      arguments: [metadata]
+    - executable: node
+      arguments: ["--version"]
 
 process:
   list: auto

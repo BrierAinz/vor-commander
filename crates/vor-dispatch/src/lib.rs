@@ -51,6 +51,7 @@ pub struct ReadOnlyDispatcher {
     process: ProcessWorker,
     browser: BrowserSessionWorker,
     terminal_sessions: TerminalSessionManager,
+    safe_executable_paths: Vec<PathBuf>,
     approval_verifier: ApprovalVerifier,
     max_output_bytes: usize,
     #[cfg(feature = "fault-injection")]
@@ -67,6 +68,7 @@ impl ReadOnlyDispatcher {
             return Err(DispatchError::InvalidConfig);
         }
         let policy = PolicyEngine::from_yaml_file(&config.policy_path)?;
+        let safe_executable_paths = policy.config().terminal.safe_executable_paths.clone();
         let ledger = Ledger::open(&config.audit_sqlite, &config.audit_jsonl)?;
         let broker = Broker::new(policy, ledger);
         let fs = FsWorker::new(config.allowed_roots.clone(), config.journal_dir)?;
@@ -87,6 +89,7 @@ impl ReadOnlyDispatcher {
             process: ProcessWorker,
             browser,
             terminal_sessions,
+            safe_executable_paths,
             approval_verifier: ApprovalVerifier::new(),
             max_output_bytes: config.max_output_bytes,
             #[cfg(feature = "fault-injection")]
@@ -452,15 +455,17 @@ impl ReadOnlyDispatcher {
             edit_metadata = Some((prepared.diff_summary, prepared.diff_truncated));
         }
 
-        if authorization.is_auto()
+        let policy_write_attempt = authorization.request.envelope.action == "filesystem.write"
             && authorization
                 .request
                 .envelope
                 .parameters
                 .get("policy_attempt")
                 .and_then(serde_json::Value::as_bool)
-                == Some(true)
-        {
+                == Some(true);
+        let safe_terminal = authorization.request.envelope.action == "terminal.exec"
+            && authorization.decision.reason_code == "terminal_safe_list";
+        if authorization.is_auto() && (policy_write_attempt || safe_terminal) {
             let (output, content_type) = self.execute_authorized(&authorization)?;
             self.broker
                 .audit_outcome_at(&authorization, "executed", now_unix_ms)?;
@@ -733,6 +738,46 @@ impl ReadOnlyDispatcher {
                     "application/json",
                 ))
             }
+            "terminal.exec" => {
+                let mut spec = remote_terminal_spec(&authorization.request, self.max_output_bytes)?;
+                let resolved = vor_policy::resolve_safe_executable_path(
+                    &spec.argv[0],
+                    &self.safe_executable_paths,
+                )
+                .ok_or(DispatchError::InvalidTerminalParameters)?;
+                spec.argv[0] = resolved.to_string_lossy().into_owned();
+                spec.environment = vor_terminal::safe_child_environment(Some(&resolved));
+                if spec.argv.get(1).is_some_and(|value| {
+                    value == "status"
+                        || value == "diff"
+                        || value == "log"
+                        || value == "show"
+                        || value == "branch"
+                }) && resolved
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value.eq_ignore_ascii_case("git"))
+                {
+                    let subcommand = spec.argv[1].clone();
+                    vor_git::reject_repo_alias(&resolved, &spec.cwd, &subcommand)?;
+                    vor_git::harden_terminal_git(&mut spec.argv, &mut spec.environment)?;
+                }
+                let owner = terminal_session_owner(&authorization.request)?;
+                let session_id = self.terminal_sessions.start(owner, spec.clone())?;
+                Ok((
+                    serde_json::to_vec(&serde_json::json!({
+                        "session_id": session_id,
+                        "state": "running",
+                        "cwd": spec.cwd.to_string_lossy(),
+                        "timeout_ms": spec.timeout_ms,
+                        "max_output_bytes": spec.max_output_bytes,
+                        "columns": spec.columns,
+                        "rows": spec.rows,
+                        "approval": "safe-list"
+                    }))?,
+                    "application/json",
+                ))
+            }
             _ => Err(DispatchError::RemoteActionNotAllowed),
         }
     }
@@ -982,6 +1027,7 @@ fn remote_terminal_spec(
 
     Ok(TerminalSpec {
         argv,
+        environment: std::collections::BTreeMap::new(),
         cwd: PathBuf::from(&request.envelope.target),
         timeout_ms,
         max_output_bytes: requested_output,
@@ -1249,9 +1295,11 @@ mod tests {
 
     fn write_policy(path: &Path, root: &Path) {
         let root = root.to_string_lossy().replace('\\', "\\\\");
+        let git = find_git().to_string_lossy().replace('\\', "\\\\");
         let yaml = format!(
             r#"version: 1
 policy_id: dispatch-test
+mode: policy
 filesystem:
   - path: "{root}"
     read: auto
@@ -1261,6 +1309,8 @@ terminal:
   project_tests: auto
   destructive: approval
   elevated: approval
+  safe_executable_paths:
+    - "{git}"
 process:
   list: auto
   inspect: auto
@@ -2093,6 +2143,47 @@ audit: {{ required: true, fail_if_unwritable: true }}
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         panic!("terminal session polling exhausted");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn safe_list_terminal_starts_without_signature_and_is_audited() {
+        let dir = tempdir().unwrap();
+        let git = find_git();
+        assert!(
+            Command::new(git)
+                .arg("init")
+                .arg("--quiet")
+                .arg(dir.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+        let request = terminal_request("req-terminal-safe-1", dir.path(), &["git", "status"]);
+        let proto = action_request_to_proto(&request).unwrap();
+        let mut dispatcher = dispatcher(dir.path(), DEFAULT_MAX_OUTPUT_BYTES);
+
+        let result = dispatcher.dispatch_proto_at(&proto, 1_000).unwrap();
+        assert_eq!(result.status, "ok");
+        let started: serde_json::Value = serde_json::from_slice(&result.output).unwrap();
+        assert_eq!(started["state"], "running");
+        assert_eq!(started["approval"], "safe-list");
+        let session_id = started["session_id"].as_str().unwrap();
+        let completed = wait_terminal_result(&mut dispatcher, session_id, 2_000);
+        assert_ne!(completed["state"], "running");
+
+        let records = dispatcher.audit_records_for_organization("org-1").unwrap();
+        let safe_records = records
+            .iter()
+            .filter(|record| record.event.request_id == "req-terminal-safe-1")
+            .collect::<Vec<_>>();
+        assert_eq!(safe_records.len(), 2);
+        assert!(
+            safe_records
+                .iter()
+                .all(|record| record.event.authority == "safe-list"
+                    && record.event.approval == "safe-list")
+        );
     }
 
     #[cfg(windows)]

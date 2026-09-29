@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use thiserror::Error;
 use vor_core::Authorization;
 use vor_protocol::PolicyDecisionKind;
@@ -14,6 +16,120 @@ use std::os::windows::fs::MetadataExt;
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 #[cfg(windows)]
 const REPARSE_POINT_ATTRIBUTE: u32 = 0x400;
+
+pub const GIT_ENVIRONMENT: [(&str, &str); 7] = [
+    ("GIT_OPTIONAL_LOCKS", "0"),
+    ("GIT_TERMINAL_PROMPT", "0"),
+    ("GIT_ATTR_NOSYSTEM", "1"),
+    ("GIT_CONFIG_NOSYSTEM", "1"),
+    ("GIT_CONFIG_SYSTEM", "NUL"),
+    ("GIT_CONFIG_GLOBAL", "NUL"),
+    ("GIT_CONFIG_COUNT", "0"),
+];
+
+pub const GIT_HARDENING_ARGUMENTS: [&str; 11] = [
+    "--no-pager",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.untrackedCache=false",
+    "-c",
+    "core.pager=cat",
+    "-c",
+    "core.attributesFile=",
+    "-c",
+    "diff.external=",
+];
+
+const DIFF_HARDENING_ARGUMENTS: [&str; 2] = ["--no-ext-diff", "--no-textconv"];
+static EMPTY_GIT_DIRECTORY: OnceLock<tempfile::TempDir> = OnceLock::new();
+
+fn empty_git_directory() -> Result<&'static Path, GitError> {
+    if let Some(directory) = EMPTY_GIT_DIRECTORY.get() {
+        return Ok(directory.path());
+    }
+    let directory = tempfile::Builder::new()
+        .prefix("vor-git-empty-")
+        .tempdir()?;
+    let _ = EMPTY_GIT_DIRECTORY.set(directory);
+    Ok(EMPTY_GIT_DIRECTORY
+        .get()
+        .expect("empty Git directory was initialized")
+        .path())
+}
+
+fn hardening_arguments() -> Result<Vec<String>, GitError> {
+    let empty = empty_git_directory()?.to_string_lossy();
+    let mut arguments = GIT_HARDENING_ARGUMENTS
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    arguments.extend(["-c".to_owned(), format!("core.hooksPath={empty}")]);
+    Ok(arguments)
+}
+
+fn harden_diff_subcommand(arguments: &mut Vec<String>, subcommand_index: usize) {
+    if arguments
+        .get(subcommand_index)
+        .is_some_and(|value| matches!(value.as_str(), "diff" | "log" | "show"))
+    {
+        arguments.splice(
+            subcommand_index + 1..subcommand_index + 1,
+            DIFF_HARDENING_ARGUMENTS.into_iter().map(str::to_owned),
+        );
+    }
+}
+
+pub fn harden_terminal_git(
+    argv: &mut Vec<String>,
+    environment: &mut BTreeMap<String, String>,
+) -> Result<(), GitError> {
+    let hardening = hardening_arguments()?;
+    let subcommand_index = 1 + hardening.len();
+    argv.splice(1..1, hardening);
+    harden_diff_subcommand(argv, subcommand_index);
+    environment.extend(
+        GIT_ENVIRONMENT
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value.to_owned())),
+    );
+    environment.insert(
+        "XDG_CONFIG_HOME".to_owned(),
+        empty_git_directory()?.to_string_lossy().into_owned(),
+    );
+    Ok(())
+}
+
+pub fn reject_repo_alias(git: &Path, repo: &Path, subcommand: &str) -> Result<(), GitError> {
+    let mut command = Command::new(git);
+    configure_git_command(&mut command)?;
+    let output = command
+        .arg("-C")
+        .arg(repo)
+        .arg("config")
+        .arg("--get")
+        .arg(format!("alias.{subcommand}"))
+        .output()?;
+    match output.status.code() {
+        Some(1) => Ok(()),
+        Some(0) => Err(GitError::RepositoryAlias(subcommand.to_owned())),
+        code => Err(GitError::CommandFailed {
+            code,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }),
+    }
+}
+
+fn configure_git_command(command: &mut Command) -> Result<(), GitError> {
+    let program = PathBuf::from(command.get_program());
+    command
+        .env_clear()
+        .envs(vor_terminal::safe_child_environment(Some(&program)))
+        .envs(GIT_ENVIRONMENT)
+        .env("XDG_CONFIG_HOME", empty_git_directory()?)
+        .args(hardening_arguments()?);
+    Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitOutput {
@@ -68,10 +184,7 @@ impl GitWorker {
     pub fn diff(&self, authorization: &Authorization) -> Result<GitOutput, GitError> {
         ensure_auto_action(authorization, "git.diff")?;
         let repo = self.resolve_repo(Path::new(&authorization.request.envelope.target))?;
-        self.run(
-            &repo,
-            &["diff", "--no-ext-diff", "--no-textconv", "--no-color", "--"],
-        )
+        self.run(&repo, &["diff", "--no-color", "--"])
     }
 
     fn resolve_repo(&self, target: &Path) -> Result<PathBuf, GitError> {
@@ -92,19 +205,14 @@ impl GitWorker {
     }
 
     fn run(&self, repo: &Path, args: &[&str]) -> Result<GitOutput, GitError> {
-        let output = Command::new(&self.git_executable)
-            .env("GIT_OPTIONAL_LOCKS", "0")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "NUL")
-            .arg("-c")
-            .arg("core.fsmonitor=false")
-            .arg("-c")
-            .arg("core.untrackedCache=false")
-            .arg("-C")
-            .arg(repo)
-            .args(args)
-            .output()?;
+        let mut command = Command::new(&self.git_executable);
+        configure_git_command(&mut command)?;
+        let mut args = args
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect::<Vec<_>>();
+        harden_diff_subcommand(&mut args, 0);
+        let output = command.arg("-C").arg(repo).args(args).output()?;
         if output.stdout.len() > MAX_OUTPUT_BYTES || output.stderr.len() > MAX_OUTPUT_BYTES {
             return Err(GitError::OutputLimitExceeded);
         }
@@ -194,6 +302,8 @@ pub enum GitError {
     OutputLimitExceeded,
     #[error("Git command failed with code {code:?}: {stderr}")]
     CommandFailed { code: Option<i32>, stderr: String },
+    #[error("repository defines the safe-listed Git subcommand as an alias: {0}")]
+    RepositoryAlias(String),
     #[error("Git I/O failed: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -270,6 +380,59 @@ mod tests {
         (dir, git)
     }
 
+    fn marker_command(dir: &Path) -> (PathBuf, PathBuf) {
+        let marker = dir.join("marker.txt");
+        let command = dir.join("marker.cmd");
+        fs::write(
+            &command,
+            format!("@echo executed>\"{}\"\r\n", marker.display()),
+        )
+        .unwrap();
+        (marker, command)
+    }
+
+    #[test]
+    fn repository_alias_is_rejected_and_git_hooks_are_neutralized() {
+        let (dir, git) = initialized_repo();
+        let marker = dir.path().join("marker.txt");
+        let hook = dir.path().join("marker.cmd");
+        fs::write(
+            &hook,
+            format!("@echo executed>\"{}\"\r\n", marker.display()),
+        )
+        .unwrap();
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "alias.status", "!cmd.exe /D /C marker.cmd"],
+        );
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "core.fsmonitor", hook.to_str().unwrap()],
+        );
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "core.pager", hook.to_str().unwrap()],
+        );
+
+        assert!(matches!(
+            reject_repo_alias(&git, dir.path(), "status"),
+            Err(GitError::RepositoryAlias(alias)) if alias == "status"
+        ));
+        assert!(!marker.exists());
+
+        run_git(&git, dir.path(), &["config", "--unset", "alias.status"]);
+        let worker = GitWorker::new(git, [dir.path().to_path_buf()]).unwrap();
+        worker
+            .status(&authorization("git.status", dir.path()))
+            .unwrap();
+        assert!(!marker.exists());
+        assert_eq!(GIT_HARDENING_ARGUMENTS[0], "--no-pager");
+        assert!(GIT_HARDENING_ARGUMENTS.contains(&"core.pager=cat"));
+    }
+
     #[test]
     fn status_reports_untracked_file() {
         let (dir, git) = initialized_repo();
@@ -289,5 +452,130 @@ mod tests {
         let output = worker.diff(&authorization("git.diff", dir.path())).unwrap();
         assert!(output.stdout.contains("-one"));
         assert!(output.stdout.contains("+two"));
+    }
+
+    #[test]
+    fn attributes_textconv_cannot_execute_a_marker() {
+        let (dir, git) = initialized_repo();
+        let (marker, command) = marker_command(dir.path());
+        fs::write(
+            dir.path().join(".gitattributes"),
+            "README.md diff=hostile\n",
+        )
+        .unwrap();
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "diff.hostile.textconv", command.to_str().unwrap()],
+        );
+        fs::write(dir.path().join("README.md"), "changed\n").unwrap();
+
+        let worker = GitWorker::new(git, [dir.path().to_path_buf()]).unwrap();
+        worker.diff(&authorization("git.diff", dir.path())).unwrap();
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn external_diff_cannot_execute_a_marker() {
+        let (dir, git) = initialized_repo();
+        let (marker, command) = marker_command(dir.path());
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "diff.external", command.to_str().unwrap()],
+        );
+        fs::write(dir.path().join("README.md"), "changed\n").unwrap();
+
+        let worker = GitWorker::new(git, [dir.path().to_path_buf()]).unwrap();
+        worker.diff(&authorization("git.diff", dir.path())).unwrap();
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn included_alias_is_rejected_without_executing_its_marker() {
+        let (dir, git) = initialized_repo();
+        let (marker, command) = marker_command(dir.path());
+        let included = dir.path().join("hostile.conf");
+        fs::write(
+            &included,
+            format!(
+                "[alias]\n\tstatus = !\"{}\"\n",
+                command.display().to_string().replace('\\', "/")
+            ),
+        )
+        .unwrap();
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "include.path", included.to_str().unwrap()],
+        );
+
+        assert!(matches!(
+            reject_repo_alias(&git, dir.path(), "status"),
+            Err(GitError::RepositoryAlias(alias)) if alias == "status"
+        ));
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn ambient_git_config_parameters_are_cleared() {
+        let (dir, git) = initialized_repo();
+        let (marker, command) = marker_command(dir.path());
+        let parameters = format!(
+            "'alias.status=!\"{}\"'",
+            command.display().to_string().replace('\\', "/")
+        );
+        let visible = Command::new(&git)
+            .env("GIT_CONFIG_PARAMETERS", &parameters)
+            .arg("config")
+            .arg("--get")
+            .arg("alias.status")
+            .output()
+            .unwrap();
+        assert!(visible.status.success());
+
+        let mut hardened = Command::new(&git);
+        hardened.env("GIT_CONFIG_PARAMETERS", parameters);
+        configure_git_command(&mut hardened).unwrap();
+        let hidden = hardened
+            .arg("-C")
+            .arg(dir.path())
+            .arg("config")
+            .arg("--get")
+            .arg("alias.status")
+            .output()
+            .unwrap();
+        assert_eq!(hidden.status.code(), Some(1));
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn configured_hooks_path_is_replaced_by_an_empty_directory() {
+        let (dir, git) = initialized_repo();
+        let (marker, command) = marker_command(dir.path());
+        let hooks = dir.path().join("hostile-hooks");
+        fs::create_dir(&hooks).unwrap();
+        fs::copy(&command, hooks.join("post-index-change.cmd")).unwrap();
+        run_git(
+            &git,
+            dir.path(),
+            &["config", "core.hooksPath", hooks.to_str().unwrap()],
+        );
+
+        let mut hardened = Command::new(&git);
+        configure_git_command(&mut hardened).unwrap();
+        let output = hardened
+            .arg("-C")
+            .arg(dir.path())
+            .arg("config")
+            .arg("--get")
+            .arg("core.hooksPath")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let effective = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+        assert_eq!(effective, empty_git_directory().unwrap());
+        assert!(fs::read_dir(effective).unwrap().next().is_none());
+        assert!(!marker.exists());
     }
 }

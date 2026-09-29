@@ -2,7 +2,10 @@
 
 use serde::Deserialize;
 use sha2::Digest as _;
-use std::{fs, path::Path};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 use vor_protocol::{ActionRequest, PolicyDecision, PolicyDecisionKind};
 
@@ -68,6 +71,73 @@ pub struct TerminalPolicy {
     pub project_tests: RuleDecision,
     pub destructive: RuleDecision,
     pub elevated: RuleDecision,
+    /// Absolute, canonical executable paths trusted for unsigned execution.
+    #[serde(default = "default_safe_executable_paths")]
+    pub safe_executable_paths: Vec<PathBuf>,
+    /// Exact executable/argument tuples that may run without a signature in
+    /// policy mode. Bare executable names are resolved only against
+    /// `safe_executable_paths`, never against PATH.
+    #[serde(default = "default_safe_commands")]
+    pub safe_commands: Vec<SafeCommandRule>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct SafeCommandRule {
+    pub executable: String,
+    #[serde(default)]
+    pub arguments: Vec<String>,
+}
+
+fn default_safe_commands() -> Vec<SafeCommandRule> {
+    [
+        ("git", &["status"][..]),
+        ("git", &["diff"]),
+        ("git", &["log"]),
+        ("git", &["show"]),
+        ("git", &["branch"]),
+        ("cargo", &["fmt", "--check"]),
+        ("cargo", &["metadata"]),
+        ("node", &["--version"]),
+    ]
+    .into_iter()
+    .map(|(executable, arguments)| SafeCommandRule {
+        executable: executable.into(),
+        arguments: arguments.iter().map(|value| (*value).into()).collect(),
+    })
+    .collect()
+}
+
+fn default_safe_executable_paths() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    let candidates = {
+        let mut paths = Vec::new();
+        if let Some(root) = env::var_os("ProgramFiles") {
+            let root = PathBuf::from(root);
+            paths.push(root.join("Git/cmd/git.exe"));
+            paths.push(root.join("Git/bin/git.exe"));
+            paths.push(root.join("nodejs/node.exe"));
+        }
+        if let Some(root) = env::var_os("SystemRoot") {
+            let root = PathBuf::from(root).join("System32");
+            paths.push(root.join("where.exe"));
+        }
+        paths
+    };
+    #[cfg(not(windows))]
+    let candidates = [
+        "/usr/bin/git",
+        "/usr/bin/cargo",
+        "/usr/bin/node",
+        "/bin/git",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .collect::<Vec<_>>();
+
+    candidates
+        .into_iter()
+        .filter_map(|path| fs::canonicalize(path).ok())
+        .collect()
 }
 
 fn default_inline_eval_decision() -> RuleDecision {
@@ -254,6 +324,14 @@ impl PolicyEngine {
         };
         if command_is_inline_eval(&argv) {
             (self.config.terminal.inline_eval, "terminal_inline_eval")
+        } else if self.config.mode != ApprovalMode::Strict
+            && safe_command_matches(
+                &argv,
+                &self.config.terminal.safe_commands,
+                &self.config.terminal.safe_executable_paths,
+            )
+        {
+            (RuleDecision::Auto, "terminal_safe_list")
         } else {
             (self.config.terminal.default, "terminal_default")
         }
@@ -296,6 +374,160 @@ impl PolicyEngine {
             envelope_digest: request.envelope_digest,
         }
     }
+}
+
+fn safe_command_matches(
+    argv: &[&str],
+    rules: &[SafeCommandRule],
+    allowed_executables: &[PathBuf],
+) -> bool {
+    let Some(executable) = resolve_safe_executable_path(argv[0], allowed_executables) else {
+        return false;
+    };
+    if argv.iter().any(|argument| contains_shell_control(argument))
+        || argv
+            .iter()
+            .skip(1)
+            .any(|argument| forbidden_safe_argument(argument))
+        || forbidden_safe_executable(&executable)
+    {
+        return false;
+    }
+    rules.iter().any(|rule| {
+        !rule.executable.trim().is_empty()
+            && rule
+                .arguments
+                .iter()
+                .all(|argument| !contains_shell_control(argument))
+            && executable_name_matches(&executable, &rule.executable)
+            && argv[1..]
+                == rule
+                    .arguments
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+    })
+}
+
+pub fn resolve_safe_executable_path(
+    value: &str,
+    allowed_executables: &[PathBuf],
+) -> Option<PathBuf> {
+    let trusted = allowed_executables
+        .iter()
+        .filter(|path| path.is_absolute())
+        .filter_map(|path| fs::canonicalize(path).ok())
+        .collect::<Vec<_>>();
+    let candidate = Path::new(value);
+    if candidate.is_absolute() || value.contains(['/', '\\']) {
+        fs::canonicalize(candidate)
+            .ok()
+            .filter(|resolved| trusted.iter().any(|path| same_executable(resolved, path)))
+    } else {
+        trusted
+            .iter()
+            .find(|path| executable_name_matches(path, value))
+            .cloned()
+    }
+}
+
+fn executable_name_matches(path: &Path, configured: &str) -> bool {
+    let actual = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let configured = Path::new(configured)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    #[cfg(windows)]
+    return actual.eq_ignore_ascii_case(configured);
+    #[cfg(not(windows))]
+    return actual == configured;
+}
+
+fn contains_shell_control(argument: &str) -> bool {
+    argument
+        .chars()
+        .any(|ch| matches!(ch, ';' | '|' | '&' | '>' | '<' | '\n' | '\r'))
+}
+
+fn forbidden_safe_argument(argument: &str) -> bool {
+    let normalized = argument.to_ascii_lowercase();
+    normalized == "-c"
+        || normalized.starts_with("-c=")
+        || normalized == "/c"
+        || normalized.starts_with("/c:")
+        || normalized == "--exec"
+        || normalized.starts_with("--exec=")
+}
+
+fn forbidden_safe_executable(path: &Path) -> bool {
+    let name = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    matches!(extension.to_ascii_lowercase().as_str(), "bat" | "cmd")
+        || matches!(
+            name.to_ascii_lowercase().as_str(),
+            "cmd" | "powershell" | "pwsh" | "sh" | "bash" | "dash" | "zsh" | "fish" | "wsl"
+        )
+}
+
+fn same_executable(left: &Path, right: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    }
+    #[cfg(not(windows))]
+    {
+        left == right
+    }
+}
+
+pub fn resolve_executable_path(value: &str) -> Option<PathBuf> {
+    let candidate = Path::new(value);
+    if candidate.is_absolute() || value.contains(['/', '\\']) {
+        return candidate
+            .is_file()
+            .then(|| fs::canonicalize(candidate).ok())
+            .flatten();
+    }
+    let path = env::var_os("PATH")?;
+    let extensions = executable_extensions(value);
+    env::split_paths(&path).find_map(|directory| {
+        extensions.iter().find_map(|extension| {
+            let candidate = directory.join(format!("{value}{extension}"));
+            candidate
+                .is_file()
+                .then(|| fs::canonicalize(candidate).ok())
+                .flatten()
+        })
+    })
+}
+
+#[cfg(windows)]
+fn executable_extensions(value: &str) -> Vec<String> {
+    if Path::new(value).extension().is_some() {
+        return vec![String::new()];
+    }
+    env::var_os("PATHEXT")
+        .and_then(|value| value.into_string().ok())
+        .unwrap_or_else(|| ".COM;.EXE;.BAT;.CMD".into())
+        .split(';')
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn executable_extensions(_value: &str) -> Vec<String> {
+    vec![String::new()]
 }
 
 fn terminal_argv(request: &ActionRequest) -> Option<Vec<&str>> {
@@ -657,6 +889,12 @@ mod tests {
         PolicyEngine::from_yaml_str(include_str!("../../../config/policy.example.yaml")).unwrap()
     }
 
+    fn engine_with_safe_executable_paths(paths: Vec<PathBuf>) -> PolicyEngine {
+        let mut engine = engine();
+        engine.config.terminal.safe_executable_paths = paths;
+        engine
+    }
+
     fn terminal_request(argv_yaml: Option<&str>) -> ActionRequest {
         let mut parameters = BTreeMap::new();
         if let Some(argv_yaml) = argv_yaml {
@@ -714,6 +952,124 @@ mod tests {
             engine().evaluate(&terminal_request(Some(r#"["python", "safe_script.py"]"#)));
         assert_eq!(decision.kind, PolicyDecisionKind::Approval);
         assert_eq!(decision.required_capability, None);
+        assert_eq!(decision.reason_code, "terminal_default");
+    }
+
+    #[test]
+    fn exact_resolved_safe_commands_are_auto_in_policy_mode() {
+        let git = resolve_executable_path("git").expect("Git is required to run the test suite");
+        let engine = engine_with_safe_executable_paths(vec![git]);
+        for argv_yaml in [r#"["git", "status"]"#, r#"["git", "diff"]"#] {
+            let decision = engine.evaluate(&terminal_request(Some(argv_yaml)));
+            assert_eq!(decision.kind, PolicyDecisionKind::Auto, "{argv_yaml}");
+            assert_eq!(decision.reason_code, "terminal_safe_list", "{argv_yaml}");
+        }
+        for argv_yaml in [
+            r#"["cargo", "check"]"#,
+            r#"["cargo", "test"]"#,
+            r#"["cargo", "clippy"]"#,
+            r#"["npm", "test"]"#,
+            r#"["python", "-m", "pytest"]"#,
+            r#"["py", "-m", "pytest"]"#,
+        ] {
+            let decision = engine.evaluate(&terminal_request(Some(argv_yaml)));
+            assert_ne!(decision.kind, PolicyDecisionKind::Auto, "{argv_yaml}");
+        }
+    }
+
+    #[test]
+    fn resolved_safe_command_outside_allowlist_requires_approval() {
+        let allowed_git =
+            resolve_executable_path("git").expect("Git is required to run the test suite");
+        let root = tempfile::tempdir().unwrap();
+        let untrusted_git = root
+            .path()
+            .join(if cfg!(windows) { "git.exe" } else { "git" });
+        fs::write(&untrusted_git, b"not an allowed executable").unwrap();
+        let argv_yaml = serde_json::to_string(&vec![
+            untrusted_git.to_string_lossy().into_owned(),
+            "status".into(),
+        ])
+        .unwrap();
+
+        let decision = engine_with_safe_executable_paths(vec![allowed_git])
+            .evaluate(&terminal_request(Some(&argv_yaml)));
+
+        assert_eq!(decision.kind, PolicyDecisionKind::Approval);
+        assert_eq!(decision.reason_code, "terminal_default");
+    }
+
+    #[test]
+    fn safe_list_rejects_composition_wrappers_aliases_and_non_exact_arguments() {
+        let root = tempfile::tempdir().unwrap();
+        let fake_git = root
+            .path()
+            .join(if cfg!(windows) { "git.exe" } else { "git" });
+        fs::write(&fake_git, b"not the configured executable").unwrap();
+        let fake_git_yaml = serde_json::to_string(&vec![
+            fake_git.to_string_lossy().into_owned(),
+            "status".into(),
+        ])
+        .unwrap();
+        for argv_yaml in [
+            r#"["git", "status;", "rm", "-rf", "x"]"#,
+            r#"["cargo", "test", "&&", "del", "x"]"#,
+            r#"["git", "status", "|", "more"]"#,
+            r#"["git", "diff", ">", "out.txt"]"#,
+            r#"["git", "diff", ">>", "out.txt"]"#,
+            r#"["cmd", "/c", "git status"]"#,
+            r#"["bash", "-c", "git status"]"#,
+            r#"["python", "-c", "print(1)"]"#,
+            r#"["git", "--exec=payload"]"#,
+            r#"["cargo", "check", "--workspace"]"#,
+            &fake_git_yaml,
+        ] {
+            let decision = engine().evaluate(&terminal_request(Some(argv_yaml)));
+            assert_ne!(decision.kind, PolicyDecisionKind::Auto, "{argv_yaml}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn safe_list_ignores_a_fake_git_prepended_to_path() {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap();
+        let real_git = resolve_executable_path("git").expect("Git is required by Windows tests");
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("git.exe"), b"fake executable").unwrap();
+        let original = env::var_os("PATH").unwrap_or_default();
+        let mut paths = vec![root.path().to_path_buf()];
+        paths.extend(env::split_paths(&original));
+        // SAFETY: this test serializes its own PATH mutation and restores it before returning.
+        unsafe { env::set_var("PATH", env::join_paths(paths).unwrap()) };
+        let matched = safe_command_matches(
+            &["git", "status"],
+            &[SafeCommandRule {
+                executable: "git".into(),
+                arguments: vec!["status".into()],
+            }],
+            std::slice::from_ref(&real_git),
+        );
+        // SAFETY: restoration is covered by the same serialized scope.
+        unsafe { env::set_var("PATH", original) };
+        assert!(matched, "the pinned executable must win over PATH");
+        assert_ne!(
+            resolve_safe_executable_path("git", std::slice::from_ref(&real_git)).unwrap(),
+            fs::canonicalize(root.path().join("git.exe")).unwrap()
+        );
+    }
+
+    #[test]
+    fn strict_mode_disables_terminal_safe_list() {
+        let input = include_str!("../../../config/policy.example.yaml").replacen(
+            "mode: policy",
+            "mode: strict",
+            1,
+        );
+        let decision = PolicyEngine::from_yaml_str(&input)
+            .unwrap()
+            .evaluate(&terminal_request(Some(r#"["git", "status"]"#)));
+        assert_eq!(decision.kind, PolicyDecisionKind::Approval);
         assert_eq!(decision.reason_code, "terminal_default");
     }
 

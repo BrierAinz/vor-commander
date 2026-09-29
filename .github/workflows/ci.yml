@@ -58,6 +58,9 @@ jobs:
       - name: Build release workspace
         run: cargo build --release --workspace --locked
 
+      - name: Check vor-approver release interface
+        run: powershell.exe -NoProfile -File tests/check_vor_approver_release.ps1
+
       - name: Run workspace tests
         run: cargo test --workspace --locked --no-fail-fast
 

@@ -8,6 +8,10 @@ foreach ($t in $targets) {
   if (Test-VorProcess $t.Pid $t.Exe) {
     $id = [int](Get-Content -Raw $t.Pid)
     Stop-Process -Id $id -Force
+    Wait-Process -Id $id -Timeout 10 -ErrorAction SilentlyContinue
+    if (Get-Process -Id $id -ErrorAction SilentlyContinue) {
+      throw "Timed out waiting for $($t.Name) (PID $id) to stop."
+    }
     Write-Host "Stopped $($t.Name) (PID $id)"
   }
   Remove-Item $t.Pid -Force -ErrorAction SilentlyContinue

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -30,10 +30,10 @@ use windows_sys::Win32::System::Console::{
 use windows_sys::Win32::System::Pipes::{CreatePipe, PeekNamedPipe};
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, EXTENDED_STARTUPINFO_PRESENT,
-    GetExitCodeProcess, InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST,
-    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOEXW,
-    TerminateProcess, UpdateProcThreadAttribute,
+    CREATE_UNICODE_ENVIRONMENT, CreateProcessW, DeleteProcThreadAttributeList,
+    EXTENDED_STARTUPINFO_PRESENT, GetExitCodeProcess, InitializeProcThreadAttributeList,
+    LPPROC_THREAD_ATTRIBUTE_LIST, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, PROCESS_INFORMATION,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW, TerminateProcess, UpdateProcThreadAttribute,
 };
 
 #[cfg(windows)]
@@ -154,6 +154,7 @@ impl ConPtySession {
     pub fn spawn(
         command_line: &str,
         current_directory: Option<&Path>,
+        environment: &BTreeMap<String, String>,
         columns: u16,
         rows: u16,
     ) -> Result<Self, TerminalError> {
@@ -189,6 +190,10 @@ impl ConPtySession {
             .as_ref()
             .map_or(null(), |value| value.as_ptr());
         let mut process_info = PROCESS_INFORMATION::default();
+        let mut environment_block = child_environment_block(environment)?;
+        let environment_ptr = environment_block
+            .as_mut()
+            .map_or(null_mut(), |block| block.as_mut_ptr().cast());
 
         let created = unsafe {
             CreateProcessW(
@@ -197,8 +202,8 @@ impl ConPtySession {
                 null(),
                 null(),
                 0,
-                EXTENDED_STARTUPINFO_PRESENT,
-                null(),
+                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                environment_ptr,
                 current_directory_ptr,
                 &startup.StartupInfo,
                 &mut process_info,
@@ -357,6 +362,37 @@ fn path_wide_nul(value: &Path) -> Result<Vec<u16>, TerminalError> {
 }
 
 #[cfg(windows)]
+fn child_environment_block(
+    overrides: &BTreeMap<String, String>,
+) -> Result<Option<Vec<u16>>, TerminalError> {
+    if overrides.is_empty() {
+        return Ok(None);
+    }
+    let mut values: Vec<(OsString, OsString)> = Vec::new();
+    for (name, value) in overrides {
+        if name.is_empty() || name.contains(['=', '\0']) || value.contains('\0') {
+            return Err(TerminalError::InteriorNul);
+        }
+        values.retain(|(existing, _)| !existing.to_string_lossy().eq_ignore_ascii_case(name));
+        values.push((OsString::from(name), OsString::from(value)));
+    }
+    values.sort_by(|(left, _), (right, _)| {
+        left.to_string_lossy()
+            .to_ascii_lowercase()
+            .cmp(&right.to_string_lossy().to_ascii_lowercase())
+    });
+    let mut block = Vec::new();
+    for (name, value) in values {
+        block.extend(name.encode_wide());
+        block.push('=' as u16);
+        block.extend(value.encode_wide());
+        block.push(0);
+    }
+    block.push(0);
+    Ok(Some(block))
+}
+
+#[cfg(windows)]
 fn wide_os_nul(value: &OsStr) -> Result<Vec<u16>, TerminalError> {
     let mut encoded: Vec<u16> = value.encode_wide().collect();
     if encoded.contains(&0) {
@@ -393,6 +429,21 @@ pub const MAX_REMOTE_TERMINAL_OUTPUT_BYTES: usize = 1024 * 1024;
 pub const MAX_REMOTE_TERMINAL_ARGC: usize = 128;
 pub const MAX_REMOTE_TERMINAL_ARG_BYTES: usize = 32 * 1024;
 
+pub fn safe_child_environment(executable: Option<&Path>) -> BTreeMap<String, String> {
+    let mut environment = BTreeMap::new();
+    for name in ["SystemRoot", "TEMP", "TMP", "USERPROFILE"] {
+        if let Some(value) = std::env::var_os(name) {
+            environment.insert(name.to_owned(), value.to_string_lossy().into_owned());
+        }
+    }
+    let path = executable
+        .and_then(Path::parent)
+        .map(|parent| parent.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    environment.insert("PATH".to_owned(), path);
+    environment
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalLimits {
     pub max_timeout_ms: u64,
@@ -419,6 +470,7 @@ impl Default for TerminalLimits {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSpec {
     pub argv: Vec<String>,
+    pub environment: BTreeMap<String, String>,
     pub cwd: PathBuf,
     pub timeout_ms: u64,
     pub max_output_bytes: usize,
@@ -564,7 +616,13 @@ impl BoundedTerminal {
             return Err(TerminalError::Cancelled);
         }
 
-        let session = ConPtySession::spawn(&command_line, Some(&cwd), spec.columns, spec.rows)?;
+        let session = ConPtySession::spawn(
+            &command_line,
+            Some(&cwd),
+            &spec.environment,
+            spec.columns,
+            spec.rows,
+        )?;
         let started = Instant::now();
         let timeout = Duration::from_millis(spec.timeout_ms);
         let mut output = Vec::new();
@@ -1097,6 +1155,7 @@ mod bounded_tests {
     fn valid_spec() -> TerminalSpec {
         TerminalSpec {
             argv: vec!["does-not-run-when-cancelled".into()],
+            environment: BTreeMap::new(),
             cwd: manifest_dir(),
             timeout_ms: 1_000,
             max_output_bytes: 4 * 1024,
@@ -1220,7 +1279,8 @@ mod tests {
     #[test]
     fn conpty_echo_resize_and_exit_roundtrip() {
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let session = ConPtySession::spawn("cmd.exe /Q /D", Some(cwd), 80, 25).unwrap();
+        let session =
+            ConPtySession::spawn("cmd.exe /Q /D", Some(cwd), &BTreeMap::new(), 80, 25).unwrap();
         assert!(session.pid() > 0);
         session.resize(100, 30).unwrap();
         session.write_input(b"echo VOR_CONPTY_OK\r\n").unwrap();
@@ -1252,6 +1312,7 @@ mod tests {
                 "/C".into(),
                 "echo VOR_BOUNDED_OK".into(),
             ],
+            environment: BTreeMap::new(),
             cwd,
             timeout_ms: 5_000,
             max_output_bytes: 64 * 1024,
@@ -1271,6 +1332,52 @@ mod tests {
     }
 
     #[test]
+    fn bounded_terminal_applies_child_environment_without_global_mutation() {
+        let cwd = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let runner = BoundedTerminal::new([cwd.clone()], TerminalLimits::default()).unwrap();
+        let mut environment = BTreeMap::new();
+        environment.insert("VOR_CHILD_ONLY".into(), "hardened".into());
+        let spec = TerminalSpec {
+            argv: vec![
+                "cmd.exe".into(),
+                "/D".into(),
+                "/Q".into(),
+                "/C".into(),
+                "echo %VOR_CHILD_ONLY%".into(),
+            ],
+            environment,
+            cwd,
+            timeout_ms: 5_000,
+            max_output_bytes: 64 * 1024,
+            columns: 80,
+            rows: 25,
+        };
+        let result = runner.run(&spec, &CancellationFlag::new()).unwrap();
+        assert!(
+            result
+                .output
+                .windows(b"hardened".len())
+                .any(|window| window == b"hardened")
+        );
+        assert!(std::env::var_os("VOR_CHILD_ONLY").is_none());
+    }
+
+    #[test]
+    fn safe_child_environment_is_a_minimal_allowlist() {
+        let executable = Path::new(r"C:\trusted\git.exe");
+        let environment = safe_child_environment(Some(executable));
+        assert_eq!(
+            environment.get("PATH").map(String::as_str),
+            Some(r"C:\trusted")
+        );
+        assert!(environment.keys().all(|name| matches!(
+            name.as_str(),
+            "PATH" | "SystemRoot" | "TEMP" | "TMP" | "USERPROFILE"
+        )));
+        assert!(!environment.keys().any(|name| name.starts_with("GIT_")));
+    }
+
+    #[test]
     fn bounded_terminal_times_out_and_terminates_process() {
         let cwd = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let runner = BoundedTerminal::new([cwd.clone()], TerminalLimits::default()).unwrap();
@@ -1281,6 +1388,7 @@ mod tests {
                 "-n".into(),
                 "10".into(),
             ],
+            environment: BTreeMap::new(),
             cwd,
             timeout_ms: 50,
             max_output_bytes: 64 * 1024,
@@ -1305,6 +1413,7 @@ mod tests {
                 "/C".into(),
                 "echo VOR_OUTPUT_LIMIT".into(),
             ],
+            environment: BTreeMap::new(),
             cwd,
             timeout_ms: 5_000,
             max_output_bytes: 4,
@@ -1328,6 +1437,7 @@ mod tests {
                 "-n".into(),
                 "10".into(),
             ],
+            environment: BTreeMap::new(),
             cwd,
             timeout_ms: 10_000,
             max_output_bytes: 64 * 1024,
@@ -1379,6 +1489,7 @@ mod tests {
                 "/C".into(),
                 "echo VOR_SESSION_OK".into(),
             ],
+            environment: BTreeMap::new(),
             cwd,
             timeout_ms: 5_000,
             max_output_bytes: 64 * 1024,
@@ -1424,6 +1535,7 @@ mod tests {
                 "-n".into(),
                 "10".into(),
             ],
+            environment: BTreeMap::new(),
             cwd,
             timeout_ms: 10_000,
             max_output_bytes: 64 * 1024,
@@ -1454,7 +1566,7 @@ mod tests {
     fn invalid_dimensions_fail_before_win32() {
         let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
         assert!(matches!(
-            ConPtySession::spawn("cmd.exe", Some(cwd), 0, 25),
+            ConPtySession::spawn("cmd.exe", Some(cwd), &BTreeMap::new(), 0, 25),
             Err(TerminalError::InvalidDimensions)
         ));
     }
