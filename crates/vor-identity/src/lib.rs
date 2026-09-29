@@ -354,7 +354,7 @@ fn pem_encode(label: &str, der: &[u8]) -> String {
     output.push_str(label);
     output.push_str("-----\n");
     for chunk in encoded.as_bytes().chunks(64) {
-        output.push_str(std::str::from_utf8(chunk).expect("base64 is ASCII"));
+        output.push_str(&String::from_utf8_lossy(chunk));
         output.push('\n');
     }
     output.push_str("-----END ");

@@ -34,7 +34,7 @@ pub struct RelayConfig {
 impl Default for RelayConfig {
     fn default() -> Self {
         Self {
-            bind: "127.0.0.1:8789".parse().expect("valid relay bind"),
+            bind: SocketAddr::from(([127, 0, 0, 1], 8789)),
             replay_capacity: 4096,
         }
     }

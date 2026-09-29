@@ -413,10 +413,19 @@ impl BillingError {
     }
 }
 
-pub async fn status(State(state): State<GatewayState>) -> Json<Value> {
-    let billing = &state.billing;
-    let store = state.billing_store.summary().ok();
-    Json(json!({
+pub async fn status(State(state): State<GatewayState>) -> Response {
+    match status_inner(&state.billing, &state.billing_store) {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => billing_error(error),
+    }
+}
+
+fn status_inner(
+    billing: &BillingConfig,
+    billing_store: &BillingStore,
+) -> Result<Value, BillingError> {
+    let store = billing_store.summary()?;
+    Ok(json!({
         "mode": billing.mode,
         "charges_enabled": false,
         "provider": "stripe",
@@ -1149,6 +1158,22 @@ mod tests {
         assert!(matches!(
             verify_stripe_signature(secret, &header, body, timestamp),
             Err(BillingError::InvalidSignature)
+        ));
+    }
+
+    #[test]
+    fn billing_summary_reports_a_poisoned_store() {
+        let store = BillingStore::memory();
+        let state = Arc::clone(&store.state);
+        let _ = std::thread::spawn(move || {
+            let _guard = state.lock().unwrap();
+            panic!("poison billing state");
+        })
+        .join();
+
+        assert!(matches!(
+            status_inner(&BillingConfig::test_disabled(), &store),
+            Err(BillingError::InvalidState)
         ));
     }
 

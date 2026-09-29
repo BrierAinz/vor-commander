@@ -123,6 +123,20 @@
       "summary": "Devuelve pid, parent_pid y executable_name de un PID concreto."
     },
     {
+      "name": "write_file",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "pilot/policy-approval-fs",
+      "summary": "Policy-approved preconditioned write; otherwise returns approval_required without an effect."
+    },
+    {
+      "name": "edit_file",
+      "risk": "write",
+      "requires_approval": true,
+      "available_on": "pilot/policy-approval-fs",
+      "summary": "Policy-approved exact edit bound to the device-read hash; sensitive cases return a signed challenge."
+    },
+    {
       "name": "prepare_write",
       "risk": "write",
       "requires_approval": true,

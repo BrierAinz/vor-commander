@@ -563,7 +563,7 @@ mod tests {
             actor_id: "operator".into(),
             device_id: "device-1".into(),
             action: "filesystem.write".into(),
-            target: r"D:\Proyectos\demo.txt".into(),
+            target: r"D:\Workspaces\demo.txt".into(),
             parameters,
             requested_capabilities: vec![],
             expires_at_unix_ms: now + 60_000,
@@ -594,7 +594,7 @@ mod tests {
             actor_id: "operator".into(),
             device_id: "device-1".into(),
             action: "terminal.exec".into(),
-            target: r"D:\Proyectos\demo".into(),
+            target: r"D:\Workspaces\demo".into(),
             parameters,
             requested_capabilities: vec![],
             expires_at_unix_ms: now + 60_000,
@@ -616,11 +616,11 @@ mod tests {
         );
         parameters.insert(
             "staged_executable".into(),
-            Value::String(r"D:\Proyectos\vor\staged\vor-agent.exe".into()),
+            Value::String(r"D:\Workspaces\vor\staged\vor-agent.exe".into()),
         );
         parameters.insert(
             "allowed_root".into(),
-            Value::String(r"D:\Proyectos\vor".into()),
+            Value::String(r"D:\Workspaces\vor".into()),
         );
         parameters.insert("current_pid".into(), Value::from(1234u64));
         ActionRequest::seal(ActionEnvelope {
@@ -629,7 +629,7 @@ mod tests {
             actor_id: "operator".into(),
             device_id: "device-1".into(),
             action: action.into(),
-            target: r"D:\Proyectos\vor\vor-agent.exe".into(),
+            target: r"D:\Workspaces\vor\vor-agent.exe".into(),
             parameters,
             requested_capabilities: vec![],
             expires_at_unix_ms: now + 60_000,

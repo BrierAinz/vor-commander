@@ -15,3 +15,7 @@ vor-auth = { path = "../../crates/vor-auth" }
 vor-gateway = { path = "../vor-gateway" }
 vor-private-grpc = { path = "../../crates/vor-private-grpc" }
 vor-relay = { path = "../vor-relay" }
+
+[dev-dependencies]
+tempfile.workspace = true
+vor-identity = { path = "../../crates/vor-identity" }

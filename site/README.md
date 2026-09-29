@@ -9,7 +9,7 @@ site/
   index.html          página principal (español)
   lista-espera.html   resultado del formulario cuando se envía sin JavaScript
   404.html            página de error
-  en/                 versión en inglés: index.html, lista-espera.html, 404.html
+  en/                 versión en inglés: index.html, waitlist.html, 404.html
   _headers            cabeceras de Cloudflare Pages (CSP, caché)
   robots.txt          apunta a sitemap.xml
   sitemap.xml         las dos portadas, con sus alternativas hreflang
@@ -60,7 +60,7 @@ cualquier otro valor cuenta como `es`).
 - Límite: más de 5 envíos por hora desde la misma IP (hash) devuelve 429.
 - Responde JSON `{ ok, code, message }` sin repetir nada de lo enviado. Si el
   cliente no pide JSON (formulario enviado sin JavaScript), redirige con 303 a
-  `/lista-espera#<code>`, o a `/en/lista-espera#<code>` con `lang=en`. El
+  `/lista-espera#<code>`, o a `/en/waitlist#<code>` con `lang=en`. El
   mensaje sale en el idioma de `lang`; los errores anteriores a leer el cuerpo
   (405, 413, 415) responden en español.
 
@@ -110,14 +110,14 @@ el despliegue.
 
 ## Idiomas
 
-El español vive en la raíz y el inglés en `/en/`, con los mismos `id` de sección.
+El español vive en la raíz y el inglés en `/en/`, con identificadores de sección localizados.
 Cada página enlaza a su equivalente con el selector de la cabecera
 («English» / «Español») y declara `<link rel="alternate" hreflang>` para `es`,
 `en` y `x-default` (español); las 404 no, porque no tienen URL propia. No hay
 redirección automática por idioma del navegador. Las páginas de `/en/` usan rutas
 absolutas (`/assets/...`). Los textos que genera el JavaScript salen de atributos
-`data-*` de la página (`data-msg-*` en el formulario, `data-label-to-*` en el
-botón de tema), y el formulario inglés envía `lang=en`. Al cambiar un texto,
+`data-*` de la página (`data-msg-*` en el formulario), y el formulario inglés
+envía `lang=en`. Al cambiar un texto,
 cámbialo en las dos versiones.
 
 ## Rendimiento y accesibilidad

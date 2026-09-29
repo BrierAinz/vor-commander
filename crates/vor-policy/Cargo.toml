@@ -7,6 +7,16 @@ license.workspace = true
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
 yaml_serde.workspace = true
 vor-protocol = { path = "../vor-protocol" }
+vor-path = { path = "../vor-path" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

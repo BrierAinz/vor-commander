@@ -1,9 +1,48 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use serde::Deserialize;
+use sha2::Digest as _;
 use std::{fs, path::Path};
 use thiserror::Error;
 use vor_protocol::{ActionRequest, PolicyDecision, PolicyDecisionKind};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalMode {
+    #[default]
+    Strict,
+    Policy,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AutoWritePolicy {
+    #[serde(default = "default_max_auto_write_bytes")]
+    pub max_bytes: usize,
+    #[serde(default = "default_max_auto_writes_per_minute")]
+    pub max_files_per_minute: u32,
+    #[serde(default = "default_max_auto_write_bytes_per_minute")]
+    pub max_bytes_per_minute: usize,
+}
+
+impl Default for AutoWritePolicy {
+    fn default() -> Self {
+        Self {
+            max_bytes: default_max_auto_write_bytes(),
+            max_files_per_minute: default_max_auto_writes_per_minute(),
+            max_bytes_per_minute: default_max_auto_write_bytes_per_minute(),
+        }
+    }
+}
+
+fn default_max_auto_write_bytes() -> usize {
+    1024 * 1024
+}
+fn default_max_auto_writes_per_minute() -> u32 {
+    60
+}
+fn default_max_auto_write_bytes_per_minute() -> usize {
+    8 * 1024 * 1024
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -70,6 +109,10 @@ pub struct AuditPolicy {
 pub struct PolicyConfig {
     pub version: u32,
     pub policy_id: String,
+    #[serde(default)]
+    pub mode: ApprovalMode,
+    #[serde(default)]
+    pub auto_write: AutoWritePolicy,
     pub filesystem: Vec<FilesystemRule>,
     pub terminal: TerminalPolicy,
     pub process: ProcessPolicy,
@@ -81,6 +124,7 @@ pub struct PolicyConfig {
 
 pub struct PolicyEngine {
     config: PolicyConfig,
+    policy_hash: String,
 }
 
 impl PolicyEngine {
@@ -90,7 +134,11 @@ impl PolicyEngine {
         if config.version != 1 || config.policy_id.trim().is_empty() {
             return Err(PolicyError::InvalidConfig);
         }
-        Ok(Self { config })
+        let policy_hash = hex::encode(sha2::Sha256::digest(input.as_bytes()));
+        Ok(Self {
+            config,
+            policy_hash,
+        })
     }
 
     pub fn from_yaml_file(path: impl AsRef<Path>) -> Result<Self, PolicyError> {
@@ -99,6 +147,10 @@ impl PolicyEngine {
 
     pub fn config(&self) -> &PolicyConfig {
         &self.config
+    }
+
+    pub fn policy_hash(&self) -> &str {
+        &self.policy_hash
     }
 
     pub fn evaluate(&self, request: &ActionRequest) -> PolicyDecision {
@@ -112,10 +164,7 @@ impl PolicyEngine {
                 self.filesystem_decision(&request.envelope.target, false),
                 "filesystem_rule",
             ),
-            "filesystem.write" => (
-                self.filesystem_decision(&request.envelope.target, true),
-                "filesystem_rule",
-            ),
+            "filesystem.write" => self.filesystem_write_decision(request),
             "terminal.exec" => self.terminal_exec_decision(request),
             "terminal.poll" => (RuleDecision::Auto, "terminal_poll"),
             "terminal.cancel" => (RuleDecision::Auto, "terminal_cancel"),
@@ -151,6 +200,54 @@ impl PolicyEngine {
         self.decision(request, rule, reason)
     }
 
+    fn filesystem_write_decision(&self, request: &ActionRequest) -> (RuleDecision, &'static str) {
+        let base = self.filesystem_decision(&request.envelope.target, true);
+        if base != RuleDecision::Auto {
+            return (base, "filesystem_rule");
+        }
+        if self.config.mode == ApprovalMode::Strict {
+            return (RuleDecision::Approval, "strict_mode");
+        }
+        if request
+            .envelope
+            .parameters
+            .get("approval_path")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            return (RuleDecision::Approval, "explicit_signed_path");
+        }
+        if normalize_windows_path(&request.envelope.target)
+            .is_none_or(|path| vor_path::sensitive_windows_path(&path))
+        {
+            return (RuleDecision::Approval, "auto_write_sensitive_path");
+        }
+        let Some(size) = request
+            .envelope
+            .parameters
+            .get("content_bytes")
+            .and_then(serde_json::Value::as_u64)
+        else {
+            return (RuleDecision::Approval, "auto_write_size_required");
+        };
+        if size > self.config.auto_write.max_bytes as u64 {
+            return (RuleDecision::Approval, "auto_write_size_exceeded");
+        }
+        let valid_precondition = request
+            .envelope
+            .parameters
+            .get("expected_target_sha256")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| {
+                value.eq_ignore_ascii_case("absent")
+                    || (value.len() == 64 && hex::decode(value).is_ok_and(|v| v.len() == 32))
+            });
+        if !valid_precondition {
+            return (RuleDecision::Approval, "auto_write_precondition_missing");
+        }
+        (RuleDecision::Auto, "auto_write_safe")
+    }
+
     fn terminal_exec_decision(&self, request: &ActionRequest) -> (RuleDecision, &'static str) {
         let Some(argv) = terminal_argv(request) else {
             return (RuleDecision::Deny, "terminal_argv_required");
@@ -170,7 +267,7 @@ impl PolicyEngine {
             .filesystem
             .iter()
             .filter_map(|rule| normalize_windows_path(&rule.path).map(|p| (p, rule)))
-            .filter(|(root, _)| path_within(&target, root))
+            .filter(|(root, _)| vor_path::windows_path_within(&target, root))
             .max_by_key(|(root, _)| root.len())
             .map(|(_, rule)| if write { rule.write } else { rule.read })
             .unwrap_or(RuleDecision::Deny)
@@ -383,8 +480,35 @@ fn powershell_is_inline_eval(argv: &[&str], windows_powershell: bool) -> bool {
     false
 }
 
+/// Normalizes a drive-absolute Windows path for policy matching, or returns
+/// `None` (deny) for anything ambiguous.
+///
+/// A component that looks like an 8.3 short name (`~<digit>`) may be an alias
+/// of a sensitive or out-of-root long name, so it is never matched as text.
+/// Windows also hands out legitimate paths in that form (`%TEMP%` under a long
+/// account name, GitHub runners' `C:\Users\RUNNER~1`), so such a path is first
+/// expanded by the filesystem to the long form it names, and the policy is
+/// evaluated on that long form. A short-looking component the filesystem cannot
+/// expand (it does not exist yet, or cannot be listed) stays denied: it could
+/// later become an alias of something else. Paths without such a component are
+/// never looked up on disk.
 fn normalize_windows_path(input: &str) -> Option<String> {
-    let path = input.trim().replace('/', "\\");
+    let path = input.replace('/', "\\");
+    let (drive, parts) = split_windows_path(&path)?;
+    if !parts.iter().any(|part| has_short_name_alias(part)) {
+        return Some(join_windows_path(drive, &parts));
+    }
+    let expanded = expand_short_names(drive, &parts)?;
+    let (drive, parts) = split_windows_path(&expanded)?;
+    if parts.iter().any(|part| has_short_name_alias(part)) {
+        return None;
+    }
+    Some(join_windows_path(drive, &parts))
+}
+
+/// Splits `X:\a\b` into its drive and components, rejecting every ambiguous
+/// component except short-name lookalikes, which the caller resolves.
+fn split_windows_path(path: &str) -> Option<(char, Vec<&str>)> {
     let bytes = path.as_bytes();
     if bytes.len() < 3 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' || bytes[2] != b'\\' {
         return None;
@@ -392,31 +516,94 @@ fn normalize_windows_path(input: &str) -> Option<String> {
     let drive = (bytes[0] as char).to_ascii_uppercase();
     let mut parts = Vec::new();
     for part in path[3..].split('\\').filter(|p| !p.is_empty()) {
-        if part == "." || part == ".." || part.contains(':') || part.contains('\0') {
+        if part == "."
+            || part == ".."
+            || part.ends_with(['.', ' '])
+            || part.contains(':')
+            || part.contains('\0')
+            || is_reserved_windows_name(part)
+        {
             return None;
         }
-        parts.push(part.to_ascii_lowercase());
+        parts.push(part);
     }
-    let suffix = parts.join("\\");
-    Some(if suffix.is_empty() {
-        format!("{drive}:\\")
-    } else {
-        format!("{drive}:\\{suffix}")
+    Some((drive, parts))
+}
+
+fn join_windows_path(drive: char, parts: &[&str]) -> String {
+    let suffix = parts.join("\\").to_ascii_lowercase();
+    format!("{drive}:\\{suffix}")
+}
+
+/// Expands the longest existing prefix of the path to its long form and keeps
+/// the non-existent tail literally (so short-looking components there are
+/// denied by the caller). Reparse points are not followed: this only answers
+/// which long name an 8.3 alias stands for.
+#[cfg(windows)]
+fn expand_short_names(drive: char, parts: &[&str]) -> Option<String> {
+    (0..=parts.len()).rev().find_map(|existing| {
+        let prefix = format!("{drive}:\\{}", parts[..existing].join("\\"));
+        let long = long_path_name(&prefix)?;
+        let mut expanded = long.trim_end_matches('\\').to_owned();
+        for part in &parts[existing..] {
+            expanded.push('\\');
+            expanded.push_str(part);
+        }
+        if expanded.ends_with(':') {
+            expanded.push('\\');
+        }
+        Some(expanded)
     })
 }
 
-fn path_within(target: &str, root: &str) -> bool {
-    if target.eq_ignore_ascii_case(root) {
-        return true;
+#[cfg(not(windows))]
+fn expand_short_names(_drive: char, _parts: &[&str]) -> Option<String> {
+    None
+}
+
+#[cfg(windows)]
+fn long_path_name(path: &str) -> Option<String> {
+    use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
+
+    let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+    let mut capacity = unsafe { GetLongPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    // The name can grow between the size query and the copy; retry a few times.
+    for _ in 0..4 {
+        if capacity == 0 {
+            return None;
+        }
+        let mut output = vec![0u16; capacity as usize];
+        let written = unsafe { GetLongPathNameW(wide.as_ptr(), output.as_mut_ptr(), capacity) };
+        if written == 0 {
+            return None;
+        }
+        if written < capacity {
+            return String::from_utf16(&output[..written as usize]).ok();
+        }
+        capacity = written;
     }
-    let prefix = if root.ends_with('\\') {
-        root.to_owned()
-    } else {
-        format!("{root}\\")
-    };
-    target
-        .to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
+    None
+}
+
+fn is_reserved_windows_name(component: &str) -> bool {
+    let stem = component
+        .split_once('.')
+        .map_or(component, |(stem, _)| stem)
+        .to_ascii_lowercase();
+    matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
+        || stem.strip_prefix("com").is_some_and(|number| {
+            matches!(number, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+        })
+        || stem.strip_prefix("lpt").is_some_and(|number| {
+            matches!(number, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+        })
+}
+
+fn has_short_name_alias(component: &str) -> bool {
+    component
+        .as_bytes()
+        .windows(2)
+        .any(|pair| pair[0] == b'~' && pair[1].is_ascii_digit())
 }
 
 #[derive(Debug, Error)]
@@ -449,6 +636,21 @@ mod tests {
             nonce: vec![1; 16],
         })
         .unwrap()
+    }
+
+    fn write_request(target: &str, size: u64, precondition: Option<&str>) -> ActionRequest {
+        let mut request = request("filesystem.write", target);
+        request
+            .envelope
+            .parameters
+            .insert("content_bytes".into(), size.into());
+        if let Some(value) = precondition {
+            request
+                .envelope
+                .parameters
+                .insert("expected_target_sha256".into(), value.into());
+        }
+        ActionRequest::seal(request.envelope).unwrap()
     }
 
     fn engine() -> PolicyEngine {
@@ -629,7 +831,7 @@ mod tests {
             "filesystem.search_content",
             "filesystem.info",
         ] {
-            let decision = engine().evaluate(&request(action, r"D:\Proyectos\demo\README.md"));
+            let decision = engine().evaluate(&request(action, r"D:\Workspaces\demo\README.md"));
             assert_eq!(decision.kind, PolicyDecisionKind::Auto, "{action}");
         }
     }
@@ -638,13 +840,156 @@ mod tests {
     fn m1_canary_write_requires_approval_without_changing_project_default() {
         let canary = engine().evaluate(&request(
             "filesystem.write",
-            r"D:\Proyectos\10_Active\vor-commander\state\local\m1-canary\live-write.txt",
+            r"D:\Projects\vor-commander\state\local\m1-canary\live-write.txt",
         ));
         assert_eq!(canary.kind, PolicyDecisionKind::Approval);
 
-        let ordinary =
-            engine().evaluate(&request("filesystem.write", r"D:\Proyectos\demo\out.txt"));
+        let ordinary = engine().evaluate(&write_request(
+            r"D:\Workspaces\demo\out.txt",
+            2,
+            Some("absent"),
+        ));
         assert_eq!(ordinary.kind, PolicyDecisionKind::Auto);
+    }
+
+    #[test]
+    fn policy_auto_write_requires_bounds_and_precondition() {
+        let engine = engine();
+        let safe = engine.evaluate(&write_request(
+            r"D:\Workspaces\demo\out.txt",
+            7,
+            Some("absent"),
+        ));
+        assert_eq!(safe.kind, PolicyDecisionKind::Auto);
+        assert_eq!(safe.reason_code, "auto_write_safe");
+        let missing = engine.evaluate(&write_request(r"D:\Workspaces\demo\out.txt", 7, None));
+        assert_eq!(missing.kind, PolicyDecisionKind::Approval);
+        assert_eq!(missing.reason_code, "auto_write_precondition_missing");
+        let large = engine.evaluate(&write_request(
+            r"D:\Workspaces\demo\out.txt",
+            1_048_577,
+            Some("absent"),
+        ));
+        assert_eq!(large.kind, PolicyDecisionKind::Approval);
+        assert_eq!(large.reason_code, "auto_write_size_exceeded");
+    }
+
+    #[test]
+    fn every_r1_sensitive_path_requires_signature() {
+        let paths = [
+            r"D:\Workspaces\x\a.ps1",
+            r"D:\Workspaces\x\a.psm1",
+            r"D:\Workspaces\x\a.psd1",
+            r"D:\Workspaces\x\a.bat",
+            r"D:\Workspaces\x\a.cmd",
+            r"D:\Workspaces\x\a.vbs",
+            r"D:\Workspaces\x\a.wsf",
+            r"D:\Workspaces\x\a.hta",
+            r"D:\Workspaces\x\a.exe",
+            r"D:\Workspaces\x\a.dll",
+            r"D:\Workspaces\x\a.msi",
+            r"D:\Workspaces\x\a.lnk",
+            r"D:\Workspaces\x\a.url",
+            r"D:\Workspaces\x\a.reg",
+            r"D:\Workspaces\x\a.scr",
+            r"D:\Workspaces\x\a.sh",
+            r"D:\Workspaces\x\.git\hooks\pre-commit",
+            r"D:\Workspaces\x\.ssh\config",
+            r"D:\Workspaces\x\.env.local",
+            r"D:\Workspaces\x\.github\workflows\ci.yml",
+            r"D:\Workspaces\x\Start Menu\Programs\Startup\readme.txt",
+            r"D:\Workspaces\x\WindowsPowerShell\Microsoft.PowerShell_profile.ps1",
+            r"D:\Workspaces\x\PowerShell\profile.ps1",
+        ];
+        for path in paths {
+            let decision = engine().evaluate(&write_request(path, 1, Some("absent")));
+            assert_eq!(decision.kind, PolicyDecisionKind::Approval, "{path}");
+            assert_eq!(decision.reason_code, "auto_write_sensitive_path", "{path}");
+        }
+    }
+
+    #[test]
+    fn persistence_paths_require_signature() {
+        let engine = engine();
+        for path in [
+            r"D:\Workspaces\workspace\.bashrc",
+            r"D:\Workspaces\workspace\.profile",
+            r"D:\Workspaces\workspace\.zshrc",
+            r"D:\Workspaces\workspace\.config\systemd\user\agent.service",
+            r"D:\Workspaces\workspace\etc\cron.d\agent",
+            r"D:\Workspaces\workspace\var\spool\cron\crontabs\user",
+            r"D:\Workspaces\workspace\Windows\System32\Tasks\agent.xml",
+        ] {
+            let decision = engine.evaluate(&write_request(path, 1, Some("absent")));
+            assert_eq!(decision.kind, PolicyDecisionKind::Approval, "{path}");
+            assert_eq!(decision.reason_code, "auto_write_sensitive_path", "{path}");
+        }
+    }
+
+    #[test]
+    fn ambiguous_windows_components_are_denied() {
+        let paths = [
+            r"D:\Workspaces\x\a.ps1.",
+            r"D:\Workspaces\x\a.ps1 ",
+            r"D:\Workspaces\x\.git.\config",
+            r"D:\Workspaces\x\CON",
+            r"D:\Workspaces\x\con.txt",
+            r"D:\Workspaces\x\PRN.log",
+            r"D:\Workspaces\x\AUX",
+            r"D:\Workspaces\x\NUL.data",
+            r"D:\Workspaces\x\COM1",
+            r"D:\Workspaces\x\com9.txt",
+            r"D:\Workspaces\x\LPT1",
+            r"D:\Workspaces\x\lpt9.txt",
+            r"D:\Workspaces\x\GIT~1\hooks\pre-commit",
+            r"D:\Workspaces\x\GITHUB~1\workflows\ci.yml",
+        ];
+        for path in paths {
+            let decision = engine().evaluate(&write_request(path, 1, Some("absent")));
+            assert_eq!(decision.kind, PolicyDecisionKind::Deny, "{path}");
+            assert_eq!(decision.reason_code, "filesystem_rule", "{path}");
+        }
+    }
+
+    #[test]
+    fn strict_mode_requires_signature_for_safe_write() {
+        // Git may check the example out with CRLF endings; match the line, not its terminator.
+        let input = include_str!("../../../config/policy.example.yaml").replacen(
+            "mode: policy",
+            "mode: strict",
+            1,
+        );
+        assert!(input.contains("mode: strict"));
+        let decision = PolicyEngine::from_yaml_str(&input)
+            .unwrap()
+            .evaluate(&write_request(
+                r"D:\Workspaces\demo\out.txt",
+                1,
+                Some("absent"),
+            ));
+        assert_eq!(decision.kind, PolicyDecisionKind::Approval);
+        assert_eq!(decision.reason_code, "strict_mode");
+    }
+
+    #[test]
+    fn missing_mode_defaults_to_strict_for_safe_write() {
+        let original = include_str!("../../../config/policy.example.yaml");
+        let input: String = original
+            .split_inclusive('\n')
+            .filter(|line| line.trim_end_matches(['\r', '\n']) != "mode: policy")
+            .collect();
+        assert_ne!(input, original, "expected to remove the mode line");
+        assert!(!input.lines().any(|line| line.starts_with("mode:")));
+
+        let decision = PolicyEngine::from_yaml_str(&input)
+            .unwrap()
+            .evaluate(&write_request(
+                r"D:\Workspaces\demo\out.txt",
+                1,
+                Some("absent"),
+            ));
+        assert_eq!(decision.kind, PolicyDecisionKind::Approval);
+        assert_eq!(decision.reason_code, "strict_mode");
     }
 
     #[test]
@@ -677,7 +1022,7 @@ mod tests {
     fn git_reads_in_project_inherit_filesystem_read_policy() {
         assert_eq!(
             engine()
-                .evaluate(&request("git.status", r"D:\Proyectos\demo"))
+                .evaluate(&request("git.status", r"D:\Workspaces\demo"))
                 .kind,
             PolicyDecisionKind::Auto
         );
@@ -704,10 +1049,206 @@ mod tests {
             "filesystem.search_content",
             "filesystem.info",
         ] {
-            let traversal = engine().evaluate(&request(action, r"D:\Proyectos\..\Windows\x"));
+            let traversal = engine().evaluate(&request(action, r"D:\Workspaces\..\Windows\x"));
             assert_eq!(traversal.kind, PolicyDecisionKind::Deny, "{action}");
         }
         let unknown = engine().evaluate(&request("future.magic", "x"));
         assert_eq!(unknown.kind, PolicyDecisionKind::Deny);
+    }
+
+    /// Regression for PR #13: Windows hands out legitimate paths in 8.3 form
+    /// (`%TEMP%` is `C:\Users\RUNNER~1\...` on GitHub runners, and for many users
+    /// with long or spaced account names). A short alias must be evaluated as the
+    /// long path it names: allowed where the long path is allowed, and still
+    /// denied or escalated where the long path is.
+    #[cfg(windows)]
+    mod short_names {
+        use super::*;
+        use std::os::windows::ffi::{OsStrExt as _, OsStringExt as _};
+        use std::path::{Path, PathBuf};
+        use windows_sys::Win32::Storage::FileSystem::{GetLongPathNameW, GetShortPathNameW};
+
+        type PathApi = unsafe extern "system" fn(*const u16, *mut u16, u32) -> u32;
+
+        fn call_path_api(api: PathApi, path: &Path) -> PathBuf {
+            let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            let required = unsafe { api(wide.as_ptr(), std::ptr::null_mut(), 0) };
+            assert!(required > 0, "path API failed for {}", path.display());
+            let mut output = vec![0u16; required as usize];
+            let written = unsafe { api(wide.as_ptr(), output.as_mut_ptr(), required) };
+            assert!(
+                written > 0 && written < required,
+                "path API failed for {}",
+                path.display()
+            );
+            PathBuf::from(std::ffi::OsString::from_wide(&output[..written as usize]))
+        }
+
+        /// A temporary base addressed by its long form, even when `%TMP%` itself
+        /// is handed out in 8.3 form (as on GitHub runners).
+        fn long_temp_base() -> (tempfile::TempDir, PathBuf) {
+            let base = tempfile::tempdir().unwrap();
+            let long = call_path_api(GetLongPathNameW, base.path());
+            (base, long)
+        }
+
+        /// The real 8.3 alias of `long`, or `None` when the volume does not
+        /// generate short names. Set `VOR_REQUIRE_SHORT_NAMES=1` to turn the skip
+        /// into a failure on machines where 8.3 generation is known to be on.
+        fn short_alias(long: &Path) -> Option<PathBuf> {
+            let short = call_path_api(GetShortPathNameW, long);
+            if short.as_os_str().eq_ignore_ascii_case(long.as_os_str()) {
+                assert!(
+                    std::env::var_os("VOR_REQUIRE_SHORT_NAMES").is_none(),
+                    "VOR_REQUIRE_SHORT_NAMES is set but {} has no 8.3 alias",
+                    long.display()
+                );
+                eprintln!(
+                    "SKIPPED: 8.3 short names are disabled on the volume of {}; \
+                     this test proves nothing here",
+                    long.display()
+                );
+                return None;
+            }
+            Some(short)
+        }
+
+        fn engine_with(rules: &[(&Path, RuleDecision, RuleDecision)]) -> PolicyEngine {
+            let mut engine = engine();
+            engine.config.filesystem = rules
+                .iter()
+                .map(|(path, read, write)| FilesystemRule {
+                    path: path.to_string_lossy().into_owned(),
+                    read: *read,
+                    write: *write,
+                })
+                .collect();
+            engine
+        }
+
+        fn text(path: &Path) -> String {
+            path.to_string_lossy().into_owned()
+        }
+
+        #[test]
+        fn short_alias_inside_allowed_root_is_evaluated_as_its_long_form() {
+            let (_guard, base) = long_temp_base();
+            let root = base.join("allowed root with a long name");
+            fs::create_dir_all(&root).unwrap();
+            fs::write(root.join("notes.txt"), b"x").unwrap();
+            let Some(short_root) = short_alias(&root) else {
+                return;
+            };
+            assert!(short_root.to_string_lossy().contains('~'));
+            let engine = engine_with(&[(&root, RuleDecision::Auto, RuleDecision::Auto)]);
+
+            let long_read =
+                engine.evaluate(&request("filesystem.read", &text(&root.join("notes.txt"))));
+            let short_read = engine.evaluate(&request(
+                "filesystem.read",
+                &text(&short_root.join("notes.txt")),
+            ));
+            assert_eq!(long_read.kind, PolicyDecisionKind::Auto);
+            assert_eq!(
+                short_read.kind,
+                PolicyDecisionKind::Auto,
+                "{}",
+                short_root.display()
+            );
+
+            let git = engine.evaluate(&request("git.status", &text(&short_root)));
+            assert_eq!(git.kind, PolicyDecisionKind::Auto);
+
+            // A new file under an existing short-named directory is still a
+            // legitimate write target: only the tail that does not exist yet is
+            // taken literally.
+            let write = engine.evaluate(&write_request(
+                &text(&short_root.join("new-file.txt")),
+                1,
+                Some("absent"),
+            ));
+            assert_eq!(
+                write.kind,
+                PolicyDecisionKind::Auto,
+                "{}",
+                write.reason_code
+            );
+        }
+
+        #[test]
+        fn short_alias_of_denied_or_sensitive_path_keeps_the_long_form_decision() {
+            let (_guard, base) = long_temp_base();
+            let secret = base.join("secret subtree with a long name");
+            let workflows = base.join(".github").join("workflows");
+            fs::create_dir_all(&secret).unwrap();
+            fs::create_dir_all(&workflows).unwrap();
+            fs::write(secret.join("key.txt"), b"x").unwrap();
+            let (Some(short_secret), Some(short_github)) =
+                (short_alias(&secret), short_alias(&base.join(".github")))
+            else {
+                return;
+            };
+            let engine = engine_with(&[
+                (&base, RuleDecision::Auto, RuleDecision::Auto),
+                (&secret, RuleDecision::Deny, RuleDecision::Deny),
+            ]);
+            let cases = [
+                (
+                    request("filesystem.read", &text(&secret.join("key.txt"))),
+                    request("filesystem.read", &text(&short_secret.join("key.txt"))),
+                ),
+                (
+                    write_request(&text(&secret.join("key.txt")), 1, Some("absent")),
+                    write_request(&text(&short_secret.join("key.txt")), 1, Some("absent")),
+                ),
+                (
+                    write_request(&text(&workflows.join("ci.yml")), 1, Some("absent")),
+                    write_request(
+                        &text(&short_github.join("workflows").join("ci.yml")),
+                        1,
+                        Some("absent"),
+                    ),
+                ),
+            ];
+            for (long, short) in cases {
+                let long_decision = engine.evaluate(&long);
+                let short_decision = engine.evaluate(&short);
+                assert_ne!(
+                    long_decision.kind,
+                    PolicyDecisionKind::Auto,
+                    "{}",
+                    long.envelope.target
+                );
+                assert_eq!(
+                    short_decision.kind, long_decision.kind,
+                    "{}",
+                    short.envelope.target
+                );
+                assert_eq!(
+                    short_decision.reason_code, long_decision.reason_code,
+                    "{}",
+                    short.envelope.target
+                );
+            }
+        }
+
+        #[test]
+        fn short_name_component_that_does_not_exist_is_denied() {
+            let (_guard, base) = long_temp_base();
+            let engine = engine_with(&[(&base, RuleDecision::Auto, RuleDecision::Auto)]);
+            // Nothing named like this exists yet; once `.git` is created it could
+            // become an alias of it, so it cannot be taken literally.
+            for target in [
+                base.join("GIT~1").join("hooks").join("pre-commit"),
+                base.join("missing directory")
+                    .join("GITHUB~1")
+                    .join("ci.yml"),
+            ] {
+                let read = engine.evaluate(&request("filesystem.read", &text(&target)));
+                let write = engine.evaluate(&write_request(&text(&target), 1, Some("absent")));
+                assert_eq!(read.kind, PolicyDecisionKind::Deny, "{}", target.display());
+                assert_eq!(write.kind, PolicyDecisionKind::Deny, "{}", target.display());
+            }
+        }
     }
 }

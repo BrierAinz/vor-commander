@@ -144,7 +144,7 @@ All M2 live canaries used exact request-bound native `owner-local` approval wher
    - error code: `terminal_timeout`
    - replay rejected.
 4. Cwd confinement:
-   - request used cwd `C:\Windows`, outside the authorized `D:\Proyectos` root
+   - request used cwd `C:\Windows`, outside the authorized `D:\Workspaces` root
    - signed commit returned `terminal_error`
    - audit outcome was `worker_failed` before process start
    - replay rejected.

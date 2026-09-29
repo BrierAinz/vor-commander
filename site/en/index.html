@@ -35,15 +35,15 @@
       </a>
       <nav class="nav" aria-label="Main">
         <ul class="nav-links">
-          <li><a href="#como-funciona">How it works</a></li>
-          <li><a href="#seguridad">Security</a></li>
-          <li><a href="#comparativa">Comparison</a></li>
-          <li><a href="#instalacion">Installation</a></li>
+          <li><a href="#how-it-works">How it works</a></li>
+          <li><a href="#security">Security</a></li>
+          <li><a href="#comparison">Comparison</a></li>
+          <li><a href="#installation">Installation</a></li>
           <li><a href="#faq">FAQ</a></li>
         </ul>
         <a class="lang-switch" href="/" hreflang="es" lang="es">Español</a>
         <a class="btn btn-primary btn-sm header-cta" href="#beta">Download</a>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Change theme" aria-pressed="false" data-label-to-light="Switch to light theme" data-label-to-dark="Switch to dark theme">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Visual theme" aria-pressed="false">
           <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.7 14.3A8.5 8.5 0 0 1 9.7 3.3a.75.75 0 0 0-.98-.9A10 10 0 1 0 21.6 15.3a.75.75 0 0 0-.9-1z"/></svg>
           <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
         </button>
@@ -51,7 +51,7 @@
     </div>
   </header>
 
-  <main id="main">
+  <main id="main" tabindex="-1">
 
     <!-- Hero -->
     <section class="hero" id="top" aria-labelledby="hero-title">
@@ -62,9 +62,9 @@
         <p class="lead">It is open source (MPL-2.0) and anyone can install and use it in local mode on their Windows PC. Hosted remote access is not yet open to the public: it goes through a waitlist.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Download</a>
-          <a class="btn btn-ghost" href="#lista-espera">Remote access waitlist</a>
+          <a class="btn btn-ghost" href="#waitlist">Remote access waitlist</a>
         </div>
-        <p class="hero-note">The first ZIP release is coming soon. Today you can already <a href="https://github.com/BrierAinz/vor-commander#readme">build it from source</a>.</p>
+        <p class="hero-note">You can now <a href="https://github.com/BrierAinz/vor-commander/releases/download/v0.1.0-beta.3/VorCommanderPilot-0.1.0-beta.3-win-x64.zip">download the v0.1.0-beta.3 ZIP</a> or <a href="https://github.com/BrierAinz/vor-commander#readme">build it from source</a>.</p>
         <ul class="clients" aria-label="Compatible assistants">
           <li>Claude <small>(remote connector, with waitlist)</small></li>
           <li>ChatGPT <small>(read-only connector, validated)</small></li>
@@ -100,7 +100,7 @@
     </section>
 
     <!-- Cómo funciona -->
-    <section id="como-funciona" aria-labelledby="como-title">
+    <section id="how-it-works" aria-labelledby="como-title">
       <div class="wrap">
         <div class="section-head">
           <span class="eyebrow">How it works</span>
@@ -192,7 +192,7 @@
     </section>
 
     <!-- Seguridad -->
-    <section id="seguridad" aria-labelledby="seguridad-title">
+    <section id="security" aria-labelledby="seguridad-title">
       <div class="wrap">
         <div class="section-head">
           <span class="eyebrow">Security</span>
@@ -230,7 +230,7 @@
     </section>
 
     <!-- Comparativa -->
-    <section class="alt" id="comparativa" aria-labelledby="comparativa-title">
+    <section class="alt" id="comparison" aria-labelledby="comparativa-title">
       <div class="wrap">
         <div class="section-head">
           <span class="eyebrow">Comparison</span>
@@ -289,9 +289,9 @@
                 <td>—</td>
               </tr>
               <tr>
-                <th scope="row">Included prompts</th>
-                <td class="yes">42, in Spanish</td>
-                <td class="yes">More than 60</td>
+                <th scope="row">Audit integrity</th>
+                <td class="yes">Hash chain and signed checkpoints</td>
+                <td>Local activity log</td>
               </tr>
               <tr>
                 <th scope="row">Free plan</th>
@@ -311,7 +311,7 @@
     </section>
 
     <!-- Instalación -->
-    <section id="instalacion" aria-labelledby="instalacion-title">
+    <section id="installation" aria-labelledby="instalacion-title">
       <div class="wrap">
         <div class="section-head">
           <span class="eyebrow">Installation <span class="tag tag-soon">Beta</span></span>
@@ -319,7 +319,7 @@
           <p class="lead">A per-user ZIP package, no Windows service, no administrator rights, and no firewall changes. The local gateway listens only on loopback.</p>
         </div>
         <div class="callout" role="note">
-          <p><strong>Available now: <a href="https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.1">v0.1.0-beta.1</a></strong> on GitHub Releases. The binaries are not yet signed with Authenticode: check the published SHA-256 before running them, or build it yourself from source following the <a href="https://github.com/BrierAinz/vor-commander#readme">README</a>. It is a beta: the steps may change.</p>
+          <p><strong>Available now: <a href="https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.3">v0.1.0-beta.3</a></strong> on GitHub Releases. The binaries are not yet signed with Authenticode: check the published SHA-256 before running them, or build it yourself from source following the <a href="https://github.com/BrierAinz/vor-commander#readme">README</a>. It is a beta: the steps may change.</p>
         </div>
         <ol class="steps">
           <li>
@@ -368,7 +368,7 @@
             <ul>
               <li>Agent and gateway on your own PC, no account and no cost.</li>
               <li>Open source under MPL-2.0 on <a href="https://github.com/BrierAinz/vor-commander">GitHub</a>.</li>
-              <li>The first ZIP release is coming soon; today you can <a href="https://github.com/BrierAinz/vor-commander#readme">build it from source</a>.</li>
+              <li><a href="https://github.com/BrierAinz/vor-commander/releases/download/v0.1.0-beta.3/VorCommanderPilot-0.1.0-beta.3-win-x64.zip">Download the v0.1.0-beta.3 ZIP</a> or <a href="https://github.com/BrierAinz/vor-commander#readme">build it from source</a>.</li>
             </ul>
             <div class="card-actions">
               <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Download</a>
@@ -379,7 +379,7 @@
             <h3>Hosted remote access <span class="tag tag-soon">Waitlist</span></h3>
             <p>The managed gateway, to use Vör Commander from Claude or ChatGPT in the cloud, is not yet open to the public: cross-organization isolation is tested locally but not yet deployed, and we will not open the service before it is.</p>
             <div class="card-actions">
-              <a class="btn btn-ghost" href="#lista-espera">Join the waitlist</a>
+              <a class="btn btn-ghost" href="#waitlist">Join the waitlist</a>
             </div>
           </div>
         </div>
@@ -388,7 +388,7 @@
     </section>
 
     <!-- Lista de espera -->
-    <section id="lista-espera" aria-labelledby="lista-espera-title">
+    <section id="waitlist" aria-labelledby="lista-espera-title">
       <div class="wrap waitlist">
         <div class="section-head">
           <span class="eyebrow">Remote access</span>
@@ -397,6 +397,7 @@
         </div>
         <form class="card waitlist-card" id="waitlist-form" action="/api/waitlist" method="post"
               data-msg-turnstile-pending="Wait for the anti-bot verification to finish and try again."
+              data-msg-turnstile-unavailable="The anti-bot verification could not load. Pause your ad or privacy blocker and reload the page, or email us:"
               data-msg-sending="Sending…"
               data-msg-bad-response="Unexpected response from the server. Try again later."
               data-msg-unexpected="Unexpected error."
@@ -404,7 +405,7 @@
           <input type="hidden" name="lang" value="en">
           <div class="field">
             <label for="wl-email">Email <span class="field-req">(required)</span></label>
-            <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email" inputmode="email" spellcheck="false">
+            <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="waitlist-status">
           </div>
           <div class="field">
             <label for="wl-name">Name <span class="field-opt">(optional)</span></label>
@@ -418,7 +419,7 @@
           <div class="cf-turnstile" data-sitekey="0x4AAAAAAFDNV7vMOq8tbebd" data-language="en" data-size="flexible"></div>
           <noscript><p class="note">The anti-bot verification requires JavaScript. If you have it disabled, write to us at <a href="mailto:contact@brierstudios.com?subject=V%C3%B6r%20Commander%20waitlist">contact@brierstudios.com</a>.</p></noscript>
           <button class="btn btn-primary" type="submit">Join the waitlist</button>
-          <p class="form-status" id="waitlist-status" role="status" aria-live="polite"></p>
+          <p class="form-status" id="waitlist-status" role="status" aria-live="polite" tabindex="-1"></p>
           <p class="privacy"><strong>Privacy.</strong> We store your email, the name and intended use if you provide them, the date, your browser (user agent, truncated), and a fingerprint (hash) of your IP — never the IP in cleartext — used only to deter abusive submissions. We use this data solely to write to you about remote access. The anti-bot verification is provided by Cloudflare Turnstile. You can request deletion at <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
         </form>
       </div>
@@ -454,7 +455,7 @@
           </details>
           <details>
             <summary>Which assistants can I use?</summary>
-            <div><p>Today, Claude as a remote connector (OAuth) with all the tools: read, git, processes, approved write, and terminal. ChatGPT: read-only connector (validated). Both remote connectors go through the hosted gateway, which for now is on the <a href="#lista-espera">waitlist</a>. The local installer wires up Cursor and VS Code automatically; a stdio adapter will bring local support for Claude Desktop <span class="tag tag-soon">Coming soon</span>.</p></div>
+            <div><p>Today, Claude as a remote connector (OAuth) with all the tools: read, git, processes, approved write, and terminal. ChatGPT: read-only connector (validated). Both remote connectors go through the hosted gateway, which for now is on the <a href="#waitlist">waitlist</a>. The local installer wires up Cursor and VS Code automatically; a stdio adapter will bring local support for Claude Desktop <span class="tag tag-soon">Coming soon</span>.</p></div>
           </details>
           <details>
             <summary>Is it open source?</summary>
@@ -462,7 +463,7 @@
           </details>
           <details>
             <summary>How much does it cost?</summary>
-            <div><p>The public beta in local mode is free. Hosted remote access does not yet have a public price: join the <a href="#lista-espera">waitlist</a> and we will write to you.</p></div>
+            <div><p>The public beta in local mode is free. Hosted remote access does not yet have a public price: join the <a href="#waitlist">waitlist</a> and we will write to you.</p></div>
           </details>
           <details>
             <summary>Why is remote access on a waitlist?</summary>
@@ -485,9 +486,9 @@
         <p>Desktop Commander is a trademark of its respective owners; it is cited for comparison purposes only.</p>
       </div>
       <ul class="footer-links" aria-label="Footer">
-        <li><a href="#como-funciona">How it works</a></li>
-        <li><a href="#seguridad">Security</a></li>
-        <li><a href="#comparativa">Comparison</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#comparison">Comparison</a></li>
         <li><a href="#beta">Download</a></li>
         <li><a href="https://github.com/BrierAinz/vor-commander">GitHub</a></li>
         <li><a href="https://github.com/BrierAinz/vor-commander/discussions">Discussions</a></li>

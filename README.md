@@ -10,6 +10,21 @@ All the code in this repository (device agent, core crates, MCP gateway, relay, 
 - License: MPL-2.0 (see `LICENSE`)
 - Trademark notice: see `TRADEMARKS.md`
 
+## Quick Start / Instalación rápida
+
+La beta local se distribuye para Windows 10/11 como `vor-pilot.zip` en
+[GitHub Releases](https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.3).
+Necesitas PowerShell 5.1 o posterior; no hace falta instalar Rust ni MSVC para
+usar el paquete publicado. Descarga también el fichero `.sha256`, verifica el
+paquete antes de ejecutarlo y sigue la guía paso a paso de
+[`docs/PILOT_INSTALLER_README.md`](docs/PILOT_INSTALLER_README.md).
+
+The local beta is distributed for Windows 10/11 as `vor-pilot.zip` on
+[GitHub Releases](https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.3).
+It requires PowerShell 5.1 or later; Rust and MSVC are only needed when building
+from source. Download the matching `.sha256` file, verify the package, and then
+follow [`docs/PILOT_INSTALLER_README.md`](docs/PILOT_INSTALLER_README.md).
+
 ## What it is
 
 Vör Commander is a local MCP server plus a device agent that runs on a Windows PC. Through MCP it exposes controlled tools to AI assistants (Claude, ChatGPT, Cursor, VS Code) so they can read files, inspect Git, list processes, run a bounded terminal and, with a signed approval, write files or execute commands.

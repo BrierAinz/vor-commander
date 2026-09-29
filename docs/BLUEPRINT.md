@@ -18,7 +18,7 @@ Fecha de decisión: 2026-09-16.
 12. SecretStore: abstracción propia con backend inicial Windows/DPAPI.
 13. Dashboard web local antes de empaquetado desktop.
 14. Clientes desacoplados: MCP, REST y WebSocket donde corresponda.
-15. Ruta canónica: `D:\Proyectos\10_Active\vor-commander`.
+15. Ruta canónica: `D:\Workspaces\10_Active\vor-commander`.
 16. Protobuf común; gRPC/mTLS privado y WSS+Protobuf para relay público.
 17. Identidad: certificado por dispositivo + mTLS + tokens cortos por sesión.
 18. Ejecución por broker + workers aislables.19. Escrituras: journal + atomic replace cuando el filesystem lo permita.

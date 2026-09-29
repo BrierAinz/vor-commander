@@ -827,15 +827,14 @@ impl TenantStore {
         if device.revoked {
             return Err(AuthError::Unauthorized);
         }
-        if let Some(workspace_id) = workspace_id {
-            if !state
+        if let Some(workspace_id) = workspace_id
+            && (!state
                 .workspaces
                 .contains_key(&tenant_key(organization_id, workspace_id))
                 || !device.workspace_ids.contains(workspace_id)
-                || !grant.workspace_ids.contains(workspace_id)
-            {
-                return Err(AuthError::Unauthorized);
-            }
+                || !grant.workspace_ids.contains(workspace_id))
+        {
+            return Err(AuthError::Unauthorized);
         }
         Ok(VerifiedTenantContext {
             organization_id: organization_id.to_owned(),

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$PackageZip,[string]$TestRoot=(Join-Path 'D:\Proyectos\30_Labs' ('vor-pilot-installer-test-'+[guid]::NewGuid().ToString('N'))))
+param([Parameter(Mandatory=$true)][string]$PackageZip,[string]$TestRoot=(Join-Path 'D:\Workspaces\30_Labs' ('vor-pilot-installer-test-'+[guid]::NewGuid().ToString('N'))))
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 function Invoke-McpTool([string]$Name,$Arguments,[int]$Id) {

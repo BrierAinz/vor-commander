@@ -408,7 +408,7 @@ mod tests {
             actor_id: "actor-1".into(),
             device_id: "device-1".into(),
             action: "filesystem.read".into(),
-            target: r"D:\Proyectos\demo\README.md".into(),
+            target: r"D:\Workspaces\demo\README.md".into(),
             parameters,
             requested_capabilities: vec![Capability {
                 name: "read".into(),

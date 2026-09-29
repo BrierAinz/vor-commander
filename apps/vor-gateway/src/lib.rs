@@ -59,7 +59,7 @@ pub struct GatewayConfig {
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
-            bind: "127.0.0.1:8742".parse().expect("valid default bind"),
+            bind: SocketAddr::from(([127, 0, 0, 1], 8742)),
         }
     }
 }
@@ -271,6 +271,8 @@ struct PrepareWriteInput {
     expected_target_sha256: String,
 }
 
+type WriteFileInput = PrepareWriteInput;
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct EditInput {
     old_text: String,
@@ -290,6 +292,8 @@ struct PrepareEditInput {
     path: String,
     edits: Vec<EditInput>,
 }
+
+type EditFileInput = PrepareEditInput;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct CommitWriteInput {
@@ -665,6 +669,18 @@ impl CommanderServer {
     }
 
     #[tool(
+        name = "write_file",
+        description = "Write one file when the owner's local policy permits it, otherwise return approval_required with a challenge. A target hash or 'absent' precondition is mandatory; the signed prepare_write/commit_write path remains available."
+    )]
+    async fn write_file(
+        &self,
+        Parameters(input): Parameters<WriteFileInput>,
+        extensions: McpExtensions,
+    ) -> Result<String, rmcp::ErrorData> {
+        self.write_file_mcp(&extensions, input).await
+    }
+
+    #[tool(
         name = "prepare_edit",
         description = "Prepare up to 20 ordered exact text replacements on an existing authorized file. The device reads and preserves the file encoding/line endings, returns a bounded unified diff and an ordinary signed filesystem.write challenge; this never writes data. Give request_base64, challenge and diff_summary to scripts/local/approve-vor-request.ps1, then use its approval_base64 with commit_write."
     )]
@@ -674,6 +690,18 @@ impl CommanderServer {
         extensions: McpExtensions,
     ) -> Result<String, rmcp::ErrorData> {
         self.prepare_edit_mcp(&extensions, input).await
+    }
+
+    #[tool(
+        name = "edit_file",
+        description = "Apply bounded exact replacements when the owner's local policy permits them, otherwise return approval_required with a challenge. The device reads the original and binds the effect to its hash."
+    )]
+    async fn edit_file(
+        &self,
+        Parameters(input): Parameters<EditFileInput>,
+        extensions: McpExtensions,
+    ) -> Result<String, rmcp::ErrorData> {
+        self.edit_file_mcp(&extensions, input).await
     }
 
     #[tool(
@@ -752,10 +780,27 @@ impl CommanderServer {
 }
 
 impl CommanderServer {
+    async fn edit_file_mcp(
+        &self,
+        extensions: &McpExtensions,
+        input: EditFileInput,
+    ) -> Result<String, rmcp::ErrorData> {
+        self.edit_mcp_with_mode(extensions, input, false).await
+    }
+
     async fn prepare_edit_mcp(
         &self,
         extensions: &McpExtensions,
         input: PrepareEditInput,
+    ) -> Result<String, rmcp::ErrorData> {
+        self.edit_mcp_with_mode(extensions, input, true).await
+    }
+
+    async fn edit_mcp_with_mode(
+        &self,
+        extensions: &McpExtensions,
+        input: PrepareEditInput,
+        approval_path: bool,
     ) -> Result<String, rmcp::ErrorData> {
         let grant = grant_from_mcp_extensions(extensions)?;
         let workspace_id = self.authorize_mcp(
@@ -775,6 +820,15 @@ impl CommanderServer {
             "edit_recipe".into(),
             serde_json::to_value(&input.edits)
                 .map_err(|_| rmcp::ErrorData::invalid_params("invalid edit recipe", None))?,
+        );
+        parameters.insert(
+            if approval_path {
+                "approval_path"
+            } else {
+                "policy_attempt"
+            }
+            .into(),
+            Value::Bool(true),
         );
         if let Some(workspace_id) = workspace_id.as_deref() {
             parameters.insert(
@@ -866,9 +920,12 @@ impl CommanderServer {
             &grant.0.actor_id,
             &input.device_id,
             workspace_id.as_deref(),
-            &input.path,
-            &input.content_base64,
-            &input.expected_target_sha256,
+            RemoteWritePayload {
+                target: &input.path,
+                content_base64: &input.content_base64,
+                expected_target_sha256: &input.expected_target_sha256,
+            },
+            true,
         )?;
         let request_base64 = STANDARD.encode(request.encode_to_vec());
         let result = links
@@ -892,6 +949,39 @@ impl CommanderServer {
             challenge,
         })
         .map_err(|_| rmcp::ErrorData::internal_error("failed to encode write challenge", None))
+    }
+
+    async fn write_file_mcp(
+        &self,
+        extensions: &McpExtensions,
+        input: WriteFileInput,
+    ) -> Result<String, rmcp::ErrorData> {
+        let grant = grant_from_mcp_extensions(extensions)?;
+        let workspace_id = self.authorize_mcp(
+            &grant.0,
+            &input.device_id,
+            input.workspace_id.as_deref(),
+            TenantRole::Operator,
+        )?;
+        let (request, _) = build_remote_write_request(
+            &grant.0.organization_id,
+            &grant.0.actor_id,
+            &input.device_id,
+            workspace_id.as_deref(),
+            RemoteWritePayload {
+                target: &input.path,
+                content_base64: &input.content_base64,
+                expected_target_sha256: &input.expected_target_sha256,
+            },
+            false,
+        )?;
+        let result = self
+            .remote_links()?
+            .dispatch_action(&input.device_id, request, Duration::from_secs(15))
+            .await
+            .map_err(remote_tool_error)?;
+        render_tool_output(result)
+            .map_err(|_| rmcp::ErrorData::internal_error("failed to encode remote result", None))
     }
 
     async fn commit_write_mcp(
@@ -1082,16 +1172,8 @@ impl CommanderServer {
         parameters: BTreeMap<String, Value>,
     ) -> Result<String, rmcp::ErrorData> {
         let grant = grant_from_mcp_extensions(extensions)?;
-        let workspace_id = self.authorize_mcp(
-            &grant.0,
-            device_id,
-            workspace_id,
-            if action.starts_with("process.") {
-                TenantRole::Viewer
-            } else {
-                TenantRole::Viewer
-            },
-        )?;
+        let workspace_id =
+            self.authorize_mcp(&grant.0, device_id, workspace_id, TenantRole::Viewer)?;
         let links = self.remote_links()?;
         let request = build_remote_request_with_parameters(
             &grant.0.organization_id,
@@ -1231,15 +1313,24 @@ const MAX_MCP_WRITE_BYTES: usize = 1024 * 1024;
 const MCP_REMOTE_ACTION_TIMEOUT: Duration = Duration::from_secs(120);
 const WRITE_REQUEST_TTL_MS: u64 = 180_000;
 
+struct RemoteWritePayload<'a> {
+    target: &'a str,
+    content_base64: &'a str,
+    expected_target_sha256: &'a str,
+}
 fn build_remote_write_request(
     organization_id: &str,
     actor_id: &str,
     device_id: &str,
     workspace_id: Option<&str>,
-    target: &str,
-    content_base64: &str,
-    expected_target_sha256: &str,
+    payload: RemoteWritePayload<'_>,
+    approval_path: bool,
 ) -> Result<(v1::ActionRequest, String), rmcp::ErrorData> {
+    let RemoteWritePayload {
+        target,
+        content_base64,
+        expected_target_sha256,
+    } = payload;
     let max_encoded = MAX_MCP_WRITE_BYTES
         .checked_mul(4)
         .and_then(|value| value.checked_div(3))
@@ -1284,6 +1375,16 @@ fn build_remote_write_request(
         Value::String(content_sha256.clone()),
     );
     parameters.insert("expected_target_sha256".into(), Value::String(expected));
+    parameters.insert("content_bytes".into(), Value::from(content.len()));
+    parameters.insert(
+        if approval_path {
+            "approval_path"
+        } else {
+            "policy_attempt"
+        }
+        .into(),
+        Value::Bool(true),
+    );
     if let Some(workspace_id) = workspace_id {
         parameters.insert(
             "workspace_id".into(),
@@ -2331,6 +2432,8 @@ mod tests {
             "git_diff",
             "process_list",
             "process_inspect",
+            "write_file",
+            "edit_file",
             "prepare_write",
             "prepare_edit",
             "commit_write",
@@ -2344,12 +2447,7 @@ mod tests {
                 "missing tool {required}: {names:?}"
             );
         }
-        for forbidden in [
-            "terminal_exec",
-            "write_file",
-            "browser_use",
-            "process_terminate",
-        ] {
+        for forbidden in ["terminal_exec", "browser_use", "process_terminate"] {
             assert!(
                 !names.contains(forbidden),
                 "unsafe tool exposed: {forbidden}"
@@ -2585,9 +2683,12 @@ mod tests {
             "actor-a",
             "device-a",
             Some("ws-a1"),
-            r"D:\Proyectos\demo.txt",
-            &STANDARD.encode(b"tenant-data"),
-            "absent",
+            RemoteWritePayload {
+                target: r"D:\Workspaces\demo.txt",
+                content_base64: &STANDARD.encode(b"tenant-data"),
+                expected_target_sha256: "absent",
+            },
+            true,
         )
         .unwrap()
         .0;
@@ -2602,7 +2703,7 @@ mod tests {
             &PrepareTerminalInput {
                 device_id: "device-b".into(),
                 workspace_id: Some("ws-b1".into()),
-                cwd: r"D:\Proyectos".into(),
+                cwd: r"D:\Workspaces".into(),
                 argv: vec!["cmd.exe".into(), "/C".into(), "echo ok".into()],
                 timeout_ms: Some(1_000),
                 max_output_bytes: Some(1024),
@@ -2629,7 +2730,7 @@ mod tests {
             "device-c",
             Some("ws-c1"),
             "filesystem.read",
-            r"D:\Proyectos\README.md",
+            r"D:\Workspaces\README.md",
         )
         .unwrap();
         let read = action_request_from_proto(&read).unwrap();
@@ -2718,10 +2819,15 @@ mod tests {
         let yaml = format!(
             r#"version: 1
 policy_id: gateway-e2e
+mode: policy
+auto_write:
+  max_bytes: 1048576
+  max_files_per_minute: 60
+  max_bytes_per_minute: 8388608
 filesystem:
   - path: "{root}"
     read: auto
-    write: approval
+    write: auto
 terminal:
   default: approval
   project_tests: auto
@@ -4083,6 +4189,26 @@ audit:
             prepare_write_case_for_workspace(router, token, id, "ws-e2e", target, before, after)
                 .await
         }
+
+        let auto_target = data.path().join("policy-auto.txt");
+        let (auto_status, auto_rpc) = mcp_tool_call(
+            router.clone(),
+            &token,
+            2_700,
+            "write_file",
+            json!({
+                "device_id": "device-e2e",
+                "workspace_id": "ws-e2e",
+                "path": auto_target.to_string_lossy(),
+                "content_base64": STANDARD.encode(b"policy-auto"),
+                "expected_target_sha256": "absent"
+            }),
+        )
+        .await;
+        assert_eq!(auto_status, StatusCode::OK, "{auto_rpc}");
+        let auto_output = tool_text_json(&auto_rpc);
+        assert_eq!(auto_output["status"], "ok");
+        assert_eq!(fs::read(&auto_target).unwrap(), b"policy-auto");
 
         async fn prepare_write_case_for_workspace(
             router: Router,

@@ -1094,13 +1094,13 @@ mod tests {
             .map(PathBuf::from)
             .unwrap_or_else(|| {
                 PathBuf::from(
-                    r"D:\Proyectos\10_Active\vor-commander\state\drivers\geckodriver\0.37.1\geckodriver.exe",
+                    r"D:\Workspaces\10_Active\vor-commander\state\drivers\geckodriver\0.37.1\geckodriver.exe",
                 )
             });
         let firefox = std::env::var_os("VOR_FIREFOX")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\Program Files\Mozilla Firefox\firefox.exe"));
-        let lab = PathBuf::from(r"D:\Proyectos\10_Active\vor-commander\state\local\a4-lab");
+        let lab = PathBuf::from(r"D:\Workspaces\10_Active\vor-commander\state\local\a4-lab");
         fs::create_dir_all(&lab).unwrap();
 
         let server = FixtureServer::start();

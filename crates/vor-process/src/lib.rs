@@ -177,7 +177,10 @@ fn terminate_with_api<Api: ProcessApi>(
     ensure_still_running(api, expected.pid, &handle)?;
     let actual = api.identity(expected.pid, &handle)?;
     if actual != expected {
-        return Err(ProcessError::IdentityMismatch { expected, actual });
+        return Err(ProcessError::IdentityMismatch {
+            expected: Box::new(expected),
+            actual: Box::new(actual),
+        });
     }
     reject_protected_identity(&actual)?;
     match api.criticality(&handle)? {
@@ -501,8 +504,8 @@ pub enum ProcessError {
     MissingIdentity,
     #[error("process identity changed; expected {expected:?}, actual {actual:?}")]
     IdentityMismatch {
-        expected: ProcessIdentity,
-        actual: ProcessIdentity,
+        expected: Box<ProcessIdentity>,
+        actual: Box<ProcessIdentity>,
     },
     #[error("protected process target rejected: {0}")]
     ProtectedProcess(&'static str),
@@ -886,7 +889,7 @@ mod tests {
     fn control_channel_identity_is_rejected_before_terminate() {
         let mut protected = identity(42);
         protected.executable_name = "codex.exe".into();
-        protected.image_path = "C:\\Tools\\Codex\\codex.exe".into();
+        protected.image_path = "D:\\Proyectos\\40_Vendor\\OpenAI\\Codex\\codex.exe".into();
         let api = FakeApi::with(fake_process(protected.clone()));
         let result = terminate_with_api(&api, protected);
         assert!(matches!(

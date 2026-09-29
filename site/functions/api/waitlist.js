@@ -9,7 +9,7 @@
 // y un correo nuevo y uno repetido reciben exactamente la misma respuesta.
 // El mensaje sale en el idioma de lang. Si el cliente no pide JSON (formulario
 // sin JavaScript), redirige con 303 a /lista-espera#<code>, o a
-// /en/lista-espera#<code> con lang=en, para que el envío nativo también tenga
+// /en/waitlist#<code> con lang=en, para que el envío nativo también tenga
 // respuesta. Los errores anteriores a leer el cuerpo (405, 413, 415) no conocen
 // lang y responden en español.
 //
@@ -64,7 +64,7 @@ const MESSAGES_EN = {
 // Idiomas admitidos: mensajes y página de resultado para el envío sin JavaScript.
 const LANGS = {
   es: { messages: MESSAGES_ES, resultPath: "/lista-espera" },
-  en: { messages: MESSAGES_EN, resultPath: "/en/lista-espera" },
+  en: { messages: MESSAGES_EN, resultPath: "/en/waitlist" },
 };
 const DEFAULT_LANG = "es";
 

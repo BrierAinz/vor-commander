@@ -116,7 +116,16 @@ struct ApplyResult {
     old_pid: u32,
     new_pid: Option<u32>,
     target_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target_sha256_error: Option<String>,
     message: String,
+}
+
+fn observe_sha256(path: &Path) -> (Option<String>, Option<String>) {
+    match sha256_file(path) {
+        Ok(digest) => (Some(digest), None),
+        Err(error) => (None, Some(error.to_string())),
+    }
 }
 
 fn main() -> ExitCode {
@@ -678,12 +687,14 @@ fn apply_update(args: &AuthorizedPlanArgs) -> Result<(), Box<dyn Error>> {
 
     let mut transaction = MaintenanceTransaction::begin(plan.clone())?;
     if let Err(error) = transaction.swap() {
+        let (target_sha256, target_sha256_error) = observe_sha256(&update.target);
         let result = ApplyResult {
             status: "swap_failed".into(),
             request_id: plan.request_id.clone(),
             old_pid: plan.current_pid,
             new_pid: None,
-            target_sha256: sha256_file(&update.target).ok(),
+            target_sha256,
+            target_sha256_error,
             message: error.to_string(),
         };
         write_result(&update.result_file, &result)?;
@@ -701,6 +712,7 @@ fn apply_update(args: &AuthorizedPlanArgs) -> Result<(), Box<dyn Error>> {
                     old_pid: plan.current_pid,
                     new_pid: Some(new_pid),
                     target_sha256: Some(sha256_file(&update.target)?),
+                    target_sha256_error: None,
                     message: "new agent remained alive through the bounded health window".into(),
                 };
                 write_result(&update.result_file, &result)?;
@@ -743,6 +755,7 @@ fn rollback_and_restart(
         Ok(mut old_child) => {
             let old_new_pid = old_child.id();
             let alive = remains_alive(&mut old_child, plan.restart.health_wait_ms)?;
+            let (target_sha256, target_sha256_error) = observe_sha256(&update.target);
             let result = ApplyResult {
                 status: if alive {
                     "rolled_back".into()
@@ -752,7 +765,8 @@ fn rollback_and_restart(
                 request_id: plan.request_id.clone(),
                 old_pid: plan.current_pid,
                 new_pid: Some(old_new_pid),
-                target_sha256: sha256_file(&update.target).ok(),
+                target_sha256,
+                target_sha256_error,
                 message: format!(
                     "{reason}; failed_new_pid={failed_pid:?}; previous binary restored"
                 ),
@@ -765,12 +779,14 @@ fn rollback_and_restart(
             }
         }
         Err(error) => {
+            let (target_sha256, target_sha256_error) = observe_sha256(&update.target);
             let result = ApplyResult {
                 status: "rollback_restart_failed".into(),
                 request_id: plan.request_id.clone(),
                 old_pid: plan.current_pid,
                 new_pid: None,
-                target_sha256: sha256_file(&update.target).ok(),
+                target_sha256,
+                target_sha256_error,
                 message: format!("{reason}; rollback launch failed: {error}"),
             };
             write_result(&update.result_file, &result)?;
@@ -788,6 +804,7 @@ fn recover_update(args: &AuthorizedPlanArgs) -> Result<(), Box<dyn Error>> {
     let update = recover_previous(plan.clone())?;
     let mut child = spawn_target(&update)?;
     let alive = remains_alive(&mut child, plan.restart.health_wait_ms)?;
+    let (target_sha256, target_sha256_error) = observe_sha256(&update.target);
     let result = ApplyResult {
         status: if alive {
             "recovered".into()
@@ -797,7 +814,8 @@ fn recover_update(args: &AuthorizedPlanArgs) -> Result<(), Box<dyn Error>> {
         request_id: plan.request_id,
         old_pid: plan.current_pid,
         new_pid: Some(child.id()),
-        target_sha256: sha256_file(&update.target).ok(),
+        target_sha256,
+        target_sha256_error,
         message: "conservative recovery restored the previous binary".into(),
     };
     write_result(&update.result_file, &result)?;
@@ -1019,6 +1037,7 @@ mod tests {
             old_pid: 10,
             new_pid: Some(11),
             target_sha256: Some("aa".repeat(32)),
+            target_sha256_error: None,
             message: "ok".into(),
         };
         let text = serde_json::to_string(&result).unwrap();
@@ -1033,6 +1052,15 @@ mod tests {
         fs::write(&path, b"plan").unwrap();
         let expected = hex::encode(Sha256::digest(b"plan"));
         assert_eq!(sha256_file(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn failed_hash_observation_preserves_the_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.exe");
+        let (digest, error) = observe_sha256(&missing);
+        assert!(digest.is_none());
+        assert!(error.is_some_and(|message| !message.is_empty()));
     }
 
     fn test_plan(root: &Path, target: &Path, staged: &Path) -> UpdatePlan {

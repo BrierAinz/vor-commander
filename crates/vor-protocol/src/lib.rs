@@ -147,7 +147,7 @@ mod tests {
             actor_id: "actor-1".into(),
             device_id: "device-1".into(),
             action: "filesystem.read".into(),
-            target: r"D:\Proyectos\demo\README.md".into(),
+            target: r"D:\Workspaces\demo\README.md".into(),
             parameters: BTreeMap::new(),
             requested_capabilities: vec![],
             expires_at_unix_ms: 2_000,

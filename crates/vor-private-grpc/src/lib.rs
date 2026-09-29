@@ -290,7 +290,7 @@ pub struct PrivateLinkConfig {
 impl Default for PrivateLinkConfig {
     fn default() -> Self {
         Self {
-            bind: "127.0.0.1:8790".parse().expect("valid private link bind"),
+            bind: SocketAddr::from(([127, 0, 0, 1], 8790)),
             replay_capacity: 4096,
         }
     }

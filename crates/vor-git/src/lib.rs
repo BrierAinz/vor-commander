@@ -84,7 +84,7 @@ impl GitWorker {
         if !self
             .allowed_roots
             .iter()
-            .any(|root| path_within(&repo, root))
+            .any(|root| vor_path::path_within(&repo, root))
         {
             return Err(GitError::OutsideAllowedRoots);
         }
@@ -146,19 +146,6 @@ fn ensure_safe_absolute_path(path: &Path) -> Result<(), GitError> {
         return Err(GitError::UnsafePath);
     }
     Ok(())
-}
-
-fn path_within(path: &Path, root: &Path) -> bool {
-    let normalize = |value: &Path| {
-        value
-            .to_string_lossy()
-            .replace('/', "\\")
-            .trim_end_matches('\\')
-            .to_ascii_lowercase()
-    };
-    let path = normalize(path);
-    let root = normalize(root);
-    path == root || path.starts_with(&(root + "\\"))
 }
 
 fn reject_reparse_components(path: &Path) -> Result<(), GitError> {

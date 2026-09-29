@@ -23,11 +23,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python test dependencies
+        run: python -m pip install pytest
+
       - name: Install Rust 1.96.0
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 1.96.0
-          components: rustfmt
+          components: rustfmt, clippy
           cache: false
           # La accion pone RUSTFLAGS=-D warnings por defecto; el CI mide lo mismo que en local.
           # Endurecer a -D warnings es una decision aparte (hoy no se ha medido).
@@ -39,8 +47,22 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Audit Rust dependencies
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
+      - name: Build release workspace
+        run: cargo build --release --workspace --locked
+
       - name: Run workspace tests
         run: cargo test --workspace --locked --no-fail-fast
+
+      - name: Run Python tests
+        run: python -m pytest tests/
 
       # Los casos de inyeccion de fallos de M4 (C21-C24) solo existen con esta feature;
       # sin este paso nadie los ejecutaria.
@@ -48,3 +70,4 @@ jobs:
         run: |
           cargo test -p vor-audit --features fault-injection --locked --no-fail-fast
           cargo test -p vor-dispatch --features fault-injection --locked --no-fail-fast
+          cargo test -p vor-core --features fault-injection --locked --no-fail-fast

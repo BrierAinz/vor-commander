@@ -43,7 +43,7 @@
         </ul>
         <a class="lang-switch" href="/en/" hreflang="en" lang="en">English</a>
         <a class="btn btn-primary btn-sm header-cta" href="#beta">Descargar</a>
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema" aria-pressed="false" data-label-to-light="Cambiar a tema claro" data-label-to-dark="Cambiar a tema oscuro">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Tema visual" aria-pressed="false">
           <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.7 14.3A8.5 8.5 0 0 1 9.7 3.3a.75.75 0 0 0-.98-.9A10 10 0 1 0 21.6 15.3a.75.75 0 0 0-.9-1z"/></svg>
           <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
         </button>
@@ -51,7 +51,7 @@
     </div>
   </header>
 
-  <main id="main">
+  <main id="main" tabindex="-1">
 
     <!-- Hero -->
     <section class="hero" id="top" aria-labelledby="hero-title">
@@ -64,7 +64,7 @@
           <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Descargar</a>
           <a class="btn btn-ghost" href="#lista-espera">Lista de espera del acceso remoto</a>
         </div>
-        <p class="hero-note">El ZIP de la primera versión llega pronto. Hoy ya puedes <a href="https://github.com/BrierAinz/vor-commander#readme">compilarlo desde el código</a>.</p>
+        <p class="hero-note">Ya puedes <a href="https://github.com/BrierAinz/vor-commander/releases/download/v0.1.0-beta.3/VorCommanderPilot-0.1.0-beta.3-win-x64.zip">descargar el ZIP de v0.1.0-beta.3</a> o <a href="https://github.com/BrierAinz/vor-commander#readme">compilarlo desde el código</a>.</p>
         <ul class="clients" aria-label="Asistentes compatibles">
           <li>Claude <small>(conector remoto, con lista de espera)</small></li>
           <li>ChatGPT <small>(conector de solo lectura, validado)</small></li>
@@ -289,9 +289,9 @@
                 <td>—</td>
               </tr>
               <tr>
-                <th scope="row">Prompts incluidos</th>
-                <td class="yes">42, en español</td>
-                <td class="yes">Más de 60</td>
+                <th scope="row">Integridad de la auditoría</th>
+                <td class="yes">Cadena de hashes y checkpoints firmados</td>
+                <td>Registro local de actividad</td>
               </tr>
               <tr>
                 <th scope="row">Plan gratuito</th>
@@ -319,7 +319,7 @@
           <p class="lead">Un paquete ZIP por usuario, sin servicio de Windows, sin permisos de administrador y sin tocar el firewall. El gateway local escucha solo en loopback.</p>
         </div>
         <div class="callout" role="note">
-          <p><strong>Ya disponible: <a href="https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.1">v0.1.0-beta.1</a></strong> en GitHub Releases. Los binarios aún no están firmados con Authenticode: comprueba el SHA-256 publicado antes de ejecutar, o compílalo tú desde el código siguiendo el <a href="https://github.com/BrierAinz/vor-commander#readme">README</a>. Es una beta: los pasos pueden cambiar.</p>
+          <p><strong>Ya disponible: <a href="https://github.com/BrierAinz/vor-commander/releases/tag/v0.1.0-beta.3">v0.1.0-beta.3</a></strong> en GitHub Releases. Los binarios aún no están firmados con Authenticode: comprueba el SHA-256 publicado antes de ejecutar, o compílalo tú desde el código siguiendo el <a href="https://github.com/BrierAinz/vor-commander#readme">README</a>. Es una beta: los pasos pueden cambiar.</p>
         </div>
         <ol class="steps">
           <li>
@@ -330,7 +330,7 @@
           <li>
             <h3>Extrae e instala con tus carpetas</h3>
             <p>Indica las carpetas a las que tendrá acceso. Una unidad completa se rechaza; si no indicas ninguna, se usa tu carpeta Documentos.</p>
-            <pre><code>.\scripts\installer\install-vor-pilot.ps1 -AllowedRoot 'D:\Proyectos\MiProyecto'</code></pre>
+            <pre><code>.\scripts\installer\install-vor-pilot.ps1 -AllowedRoot 'D:\Workspaces\MiProyecto'</code></pre>
           </li>
           <li>
             <h3>El instalador prepara tu identidad</h3>
@@ -368,7 +368,7 @@
             <ul>
               <li>Agente y gateway en tu propio PC, sin cuenta y sin coste.</li>
               <li>Código abierto bajo MPL-2.0 en <a href="https://github.com/BrierAinz/vor-commander">GitHub</a>.</li>
-              <li>El ZIP de la primera versión llega pronto; hoy puedes <a href="https://github.com/BrierAinz/vor-commander#readme">compilarlo desde el código</a>.</li>
+              <li><a href="https://github.com/BrierAinz/vor-commander/releases/download/v0.1.0-beta.3/VorCommanderPilot-0.1.0-beta.3-win-x64.zip">Descarga el ZIP de v0.1.0-beta.3</a> o <a href="https://github.com/BrierAinz/vor-commander#readme">compílalo desde el código</a>.</li>
             </ul>
             <div class="card-actions">
               <a class="btn btn-primary" href="https://github.com/BrierAinz/vor-commander/releases">Descargar</a>
@@ -397,6 +397,7 @@
         </div>
         <form class="card waitlist-card" id="waitlist-form" action="/api/waitlist" method="post"
               data-msg-turnstile-pending="Espera a que termine la verificación anti-bots e inténtalo de nuevo."
+              data-msg-turnstile-unavailable="No se pudo cargar la verificación anti-bots. Pausa el bloqueador de anuncios o privacidad y recarga la página, o escríbenos:"
               data-msg-sending="Enviando…"
               data-msg-bad-response="Respuesta inesperada del servidor. Inténtalo más tarde."
               data-msg-unexpected="Error inesperado."
@@ -404,7 +405,7 @@
           <input type="hidden" name="lang" value="es">
           <div class="field">
             <label for="wl-email">Correo electrónico <span class="field-req">(obligatorio)</span></label>
-            <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email" inputmode="email" spellcheck="false">
+            <input id="wl-email" name="email" type="email" required maxlength="254" autocomplete="email" inputmode="email" spellcheck="false" aria-describedby="waitlist-status">
           </div>
           <div class="field">
             <label for="wl-name">Nombre <span class="field-opt">(opcional)</span></label>
@@ -418,7 +419,7 @@
           <div class="cf-turnstile" data-sitekey="0x4AAAAAAFDNV7vMOq8tbebd" data-language="es" data-size="flexible"></div>
           <noscript><p class="note">La verificación anti-bots necesita JavaScript. Si lo tienes desactivado, escríbenos a <a href="mailto:contact@brierstudios.com?subject=Lista%20de%20espera%20V%C3%B6r%20Commander">contact@brierstudios.com</a>.</p></noscript>
           <button class="btn btn-primary" type="submit">Unirme a la lista de espera</button>
-          <p class="form-status" id="waitlist-status" role="status" aria-live="polite"></p>
+          <p class="form-status" id="waitlist-status" role="status" aria-live="polite" tabindex="-1"></p>
           <p class="privacy"><strong>Privacidad.</strong> Guardamos tu correo, el nombre y el uso previsto si los indicas, la fecha, tu navegador (user agent, recortado) y una huella (hash) de tu IP, nunca la IP en claro, que solo sirve para frenar envíos abusivos. Usamos estos datos únicamente para escribirte sobre el acceso remoto. La verificación anti-bots la hace Cloudflare Turnstile. Puedes pedir que los borremos en <a href="mailto:contact@brierstudios.com">contact@brierstudios.com</a>.</p>
         </form>
       </div>

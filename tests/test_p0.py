@@ -48,3 +48,20 @@ def test_protocol_binds_identity_and_digest():
     text = (ROOT / "proto/v1/commander.proto").read_text(encoding="utf-8")
     for field in ["organization_id", "actor_id", "device_id", "envelope_digest"]:
         assert field in text
+
+
+def test_ci_runs_python_tests():
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "python -m pytest tests/" in text
+
+
+def test_ci_runs_vor_core_fault_injection_tests():
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "cargo test -p vor-core --features fault-injection" in text
+
+
+def test_ci_enforces_rust_quality_gates():
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings" in text
+    assert "cargo audit" in text
+    assert "cargo build --release --workspace --locked" in text

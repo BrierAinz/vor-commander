@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/vor-path",
   "crates/vor-protocol",
   "crates/vor-wire",
   "crates/vor-remote",
@@ -30,7 +31,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-beta.3"
 edition = "2024"
 rust-version = "1.96"
 license = "MPL-2.0"

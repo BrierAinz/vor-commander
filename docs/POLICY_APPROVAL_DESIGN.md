@@ -1,4 +1,12 @@
-> **Estado: BORRADOR con revision obligatoria.** Borrador del 25-sep-2026 elaborado a partir de vor-policy, vor-core, vor-approval, vor-fs, vor-terminal, la politica de ejemplo y los handlers MCP. Decision del dueno: modo por defecto "aprobacion por politica" para el piloto por instalacion. La seccion final "Revision de seguridad" prevalece sobre el texto del borrador donde se contradigan.
+> **Estado: BORRADOR con revision obligatoria.** Redactado por un revisor interno (25-sep-2026) a partir de vor-policy, vor-core, vor-approval, vor-fs, vor-terminal, la politica de ejemplo y los handlers MCP. Decision del dueno: modo por defecto "aprobacion por politica" para el piloto por instalacion. La seccion final "Revision de revisión de seguridad independiente" prevalece sobre el texto del borrador donde se contradigan.
+
+# Implementación de slice 1 (filesystem)
+
+Implementado el 25-sep-2026. La interfaz elegida es la opción (a): `write_file` y `edit_file` aplican en un paso solo cuando la política local del dispositivo devuelve `Auto`; en otro caso devuelven `approval_required` y un challenge sin efecto. `prepare_write`, `prepare_edit` y `commit_write` conservan el camino firmado y los métodos `prepare_*` siguen libres de efectos. Esto minimiza cambios y sorpresas para clientes existentes. Terminal queda fuera de este slice y sigue firmado.
+
+La política efectiva pertenece al dueño y se carga desde `DispatchConfig.policy_path` en su máquina. El repositorio incluye solo `config/policy.example.yaml`. El ejemplo activa `mode: policy` explícitamente; si `mode` falta, el motor usa `strict` y eleva toda escritura a firma. Cada auto-write exige raíz permitida, ruta no sensible según R1, límite de 1 MiB, precondición SHA-256 para overwrite o `absent` para creación y límite de 60 por minuto por actor/dispositivo. Borrar, mover y cambiar ACL no se exponen.
+
+El ledger registra `authority`, `policy_rule` y `policy_hash`. El journal de `vor-fs` conserva backup, digest y estado committed. La precondición se comprueba otra vez inmediatamente antes del reemplazo atómico, por lo que una carrera falla sin efecto.
 
 # Diseño de aprobación por política para vor-commander
 
@@ -13,7 +21,7 @@
 
 Hoy, en `crates/vor-core/src/lib.rs` (`Broker::authorize_at` + `Broker::consume_approval_at`) y en `apps/vor-gateway/src/lib.rs` (`prepare_write_mcp`, `commit_write_mcp`, `prepare_terminal_mcp`, `commit_terminal_mcp`), **toda** escritura y **toda** ejecución de terminal exige dos saltos autenticados: un `prepare_*` que solo emite un reto de aprobación y un `commit_*` con un `SignedApproval` verificado por `ApprovalVerifier::verify`. Es seguro, pero en la práctica Desktop Commander gana en ergonomía porque el asistente escribe y ejecuta directamente.
 
-La propuesta cambia el **modo por defecto** a **aprobación por política**: el motor decide si la acción es auto (ejecuta y audita), requiere firma, o se deniega. El camino firmado existente se conserva como `mode: strict` para el piloto y para quien lo pida.
+La aprobación por política se activa explícitamente con `mode: policy`: el motor decide si la acción es auto (ejecuta y audita), requiere firma, o se deniega. El camino firmado existente es el valor seguro por defecto: `mode: strict`, también aplicado cuando el campo no aparece.
 
 Tres invariantes no se tocan:
 
@@ -35,17 +43,17 @@ La resolución de rutas se hace en `vor_policy::PolicyEngine::filesystem_decisio
 
 | Acción | Parámetro / situación | Decisión | Justificación |
 |---|---|---|---|
-| `filesystem.write` | Crear fichero nuevo bajo `D:\Proyectos\…` (no existe) | `AUTO` | No sobrescribe nada; revertir es trivial (borrar). |
-| `filesystem.write` | Sobrescribir fichero existente bajo `D:\Proyectos\…` con `expected_target_sha256` presente y dentro de límite de tamaño | `AUTO` con precondition | `FsWorker::write` exige `content_sha256` y `expected_target_sha256` y verifica antes y después del `MoveFileExW` (ver `required_content_digest`, `verify_target_precondition`, `PostWriteVerificationFailed`). El digest previo ata el commit a un estado concreto y el post-write rehace el hash del fichero ya en su sitio. |
+| `filesystem.write` | Crear fichero nuevo bajo `D:\Workspaces\…` (no existe) | `AUTO` | No sobrescribe nada; revertir es trivial (borrar). |
+| `filesystem.write` | Sobrescribir fichero existente bajo `D:\Workspaces\…` con `expected_target_sha256` presente y dentro de límite de tamaño | `AUTO` con precondition | `FsWorker::write` exige `content_sha256` y `expected_target_sha256` y verifica antes y después del `MoveFileExW` (ver `required_content_digest`, `verify_target_precondition`, `PostWriteVerificationFailed`). El digest previo ata el commit a un estado concreto y el post-write rehace el hash del fichero ya en su sitio. |
 | `filesystem.write` | Sobrescribir pero **sin** `expected_target_sha256` o con `absent` sobre un fichero que sí existe | `APPROVAL` | Sin precondition no se distingue "crear" de "machacar"; el commit ciego a un fichero preexistente es lo que el modo firmado quería evitar. |
-| `filesystem.write` | Cualquier escritura bajo `D:\Proyectos\10_Active\vor-commander\state\local\m1-canary` | `APPROVAL` (regla explícita) | El ejemplo `policy.example.yaml` ya marca esa ruta como `write: approval` aunque esté bajo `D:\Proyectos`; el "más específico gana" lo respeta. Sirve para areneros. |
+| `filesystem.write` | Cualquier escritura bajo `D:\Workspaces\10_Active\vor-commander\state\local\m1-canary` | `APPROVAL` (regla explícita) | El ejemplo `policy.example.yaml` ya marca esa ruta como `write: approval` aunque esté bajo `D:\Workspaces`; el "más específico gana" lo respeta. Sirve para areneros. |
 | `filesystem.write` | Borrar (`fs::remove_file` no existe en el worker, no es un endpoint expuesto) | siempre `APPROVAL` (operación dedicada `filesystem.delete`) | Borrar no es recuperable sin backup; aunque el worker actual no lo expone, el contrato MCP `delete_file` se modela como acción separada y exige firma. |
 | `filesystem.write` | Mover fuera de la raíz permitida (cambio de padre) | `APPROVAL` | El worker resuelve el destino con `resolve_write_target`, que exige que el padre canónico esté dentro de `allowed_roots`. Si la operación es un rename跨界 se bloquea aquí; si está dentro pero cruza directorios protegidos, cae en la regla de ese directorio. |
-| `filesystem.write` | `.git/`, `.ssh/`, `.env`, `.aws/`, `.gnupg/`, scripts de arranque (`*.bat`, `*.cmd`, `*.ps1`, `*.psm1`, `*.vbs`, `*.js` en `Startup/`, `*.service` en Linux, `launchd` plists), `C:\Windows\**`, `C:\Program Files\**` | `APPROVAL` o `ELEVATED_APPROVAL` | Estos ficheros cambian el comportamiento del sistema o exponen secretos. La política por defecto los declara con `elevated_approval` o `approval` (ver `policy.example.yaml`: `C:\Windows` está en `elevated_approval`). En piloto, una regla dedicada nueva los enumera explícitamente; si la enumeración no cubre un patrón, el matching por prefijo más largo garantiza que `D:\Proyectos` no las tapa (la regla sensible es más profunda o se evalúa antes por especificidad). |
+| `filesystem.write` | `.git/`, `.ssh/`, `.env`, `.aws/`, `.gnupg/`, scripts de arranque (`*.bat`, `*.cmd`, `*.ps1`, `*.psm1`, `*.vbs`, `*.js` en `Startup/`, `*.service` en Linux, `launchd` plists), `C:\Windows\**`, `C:\Program Files\**` | `APPROVAL` o `ELEVATED_APPROVAL` | Estos ficheros cambian el comportamiento del sistema o exponen secretos. La política por defecto los declara con `elevated_approval` o `approval` (ver `policy.example.yaml`: `C:\Windows` está en `elevated_approval`). En piloto, una regla dedicada nueva los enumera explícitamente; si la enumeración no cubre un patrón, el matching por prefijo más largo garantiza que `D:\Workspaces` no las tapa (la regla sensible es más profunda o se evalúa antes por especificidad). |
 | `filesystem.write` | Tamaño > `max_auto_write_bytes` (por defecto **1 MiB**, igual al `MAX_MCP_WRITE_BYTES` del gateway) | `APPROVAL` | Coherente con el límite del gateway; escrituras grandes son atípicas y se firman. |
 | `filesystem.write` | MIME/ejecutable detectado por extensión (`*.exe`, `*.dll`, `*.com`, `*.scr`, `*.msi`) | `APPROVAL` | Crear un binario ejecutable bajo la carpeta de proyecto es un caso típico de "escribir y luego ejecutar"; pedir firma corta la cadena simple. |
 | `filesystem.write` | Reparse point / symlink en cualquier componente del path | `DENY` (FS worker) | Ya lo aplica `reject_reparse_components` en `vor-fs`. |
-| `filesystem.read` | Bajo `D:\Proyectos` | `AUTO` | Solo lectura; el ledger audita. |
+| `filesystem.read` | Bajo `D:\Workspaces` | `AUTO` | Solo lectura; el ledger audita. |
 | `filesystem.read` | Bajo `C:\Users\…` con ficheros sensibles (`.ssh`, `.aws`, `.gnupg`, `.env`) | `APPROVAL` | Lectura de material clave es el primer paso de muchos ataques. |
 | `filesystem.read` | Tamaño > `max_auto_read_bytes` | `APPROVAL` | Lecturas masivas suelen ser exfiltración. |
 
@@ -133,7 +141,7 @@ Todo va a `config/policy.example.yaml`, validado por `PolicyEngine::from_yaml_st
 ### 3.1 Bloque nuevo
 
 ```yaml
-mode: policy_approval      # policy_approval | strict. Default: policy_approval.
+mode: policy               # policy | strict. Si se omite: strict.
 
 filesystem:
   auto_write:
@@ -207,11 +215,11 @@ terminal:
 
 ### 3.2 Defaults seguros (modo `policy_approval`)
 
-- **Filesystem**: `AUTO` solo en `D:\Proyectos` y subcarpetas que no estén en `sensitive_globs`, hasta 1 MiB por escritura. El resto del disco exige firma.
+- **Filesystem**: `AUTO` solo en `D:\Workspaces` y subcarpetas que no estén en `sensitive_globs`, hasta 1 MiB por escritura. El resto del disco exige firma.
 - **Terminal**: `AUTO` para comandos cuyo ejecutable está en `allow_command_prefixes` *y* cuyo argv no contiene ningún `deny_argv_patterns` *y* cuya `cwd` está dentro de las `allowed_roots` del worker. Cualquier desviación eleva a `APPROVAL` o `ELEVATED_APPROVAL`.
 - **Inline eval**: `ELEVATED_APPROVAL` siempre (sin cambios).
 - **Red saliente del agente**: bloqueada salvo targets en `allow_network_targets`; un comando de red no listado siempre devuelve `APPROVAL` con `required_capability = "elevated"`.
-- **Mode strict**: el dueño puede poner `mode: strict` y恢复到 el comportamiento actual (todo `filesystem.write` y `terminal.exec` exige firma). Esto es lo que usaremos en el piloto durante las primeras dos semanas como sombra, antes de cambiar el default visible.
+- **Mode strict**: el dueño puede poner `mode: strict`, u omitir `mode`, para conservar el comportamiento seguro (todo `filesystem.write` y `terminal.exec` exige firma). `mode: policy` debe ser una elección explícita.
 
 ### 3.3 Modo estricto siempre disponible
 
@@ -225,7 +233,7 @@ El campo `mode` admite `strict`. En ese modo, `PolicyEngine::evaluate` aplica un
 
 El ejemplo canónico: "escribe `tools/run.sh` (auto) y luego ejecútalo (auto porque `bash` está en la lista)". Las mitigaciones son cuatro y se acumulan:
 
-1. **Globs sensibles obligatorios.** `tools/run.sh` cae en `**/*.sh` solo si el dueño lo declara; por defecto **no** está en `sensitive_globs`. La propuesta lo añade como `**/*.sh`, `**/*.bash`, `**/*.zsh`, `**/*.ksh`, `**/*.fish` (cubre ejecutables *shell* y scripts interpretables), de forma que escribir un script ejecutable se eleva a `APPROVAL` aunque la carpeta sea `D:\Proyectos`. El ejecutarlo por `bash tools/run.sh` ya era `APPROVAL` por `inline_eval` (`bash -c`), y si se invoca como `./tools/run.sh` el ejecutable no está en `allow_command_prefixes`, así que también se eleva. **Resultado:** ambos pasos piden firma.
+1. **Globs sensibles obligatorios.** `tools/run.sh` cae en `**/*.sh` solo si el dueño lo declara; por defecto **no** está en `sensitive_globs`. La propuesta lo añade como `**/*.sh`, `**/*.bash`, `**/*.zsh`, `**/*.ksh`, `**/*.fish` (cubre ejecutables *shell* y scripts interpretables), de forma que escribir un script ejecutable se eleva a `APPROVAL` aunque la carpeta sea `D:\Workspaces`. El ejecutarlo por `bash tools/run.sh` ya era `APPROVAL` por `inline_eval` (`bash -c`), y si se invoca como `./tools/run.sh` el ejecutable no está en `allow_command_prefixes`, así que también se eleva. **Resultado:** ambos pasos piden firma.
 2. **Editar ficheros que otra herramienta ejecuta.** Si la herramienta es el propio agente, escribir `config/policy.yaml` no es directamente un endpoint; pero sí lo es escribir el `.git/hooks/pre-commit` (cae en `**/.git/**` → `APPROVAL`) o un `Makefile` que dispara `curl … | sh` (cae en redirección → `APPROVAL`). El refinamiento de redirecciones se hace parseando el argv en busca de los patrones de `deny_argv_patterns` **antes** de evaluar `default`; si aparecen, se eleva a `APPROVAL` aunque el ejecutable esté en la lista.
 3. **Doble negación.** El refinamiento es *opt-out*, no *opt-in*: por defecto cualquier desviación de la regla fina eleva. El dueño puede relajar (borrar globs, ampliar la lista de comandos) pero el default seguro requiere firma.
 4. **Tasa y correlación.** `auto_write.max_files_per_minute` y `auto_read.max_files_per_minute` (con ventana deslizante en el ledger) cortan intentos de escribir 500 ficheros en un segundo para preparar un payload.
@@ -258,7 +266,7 @@ Cada caso se implementa como `#[test]` en el crate correspondiente. El orden de 
 
 ### Rebanada 1 — Refinamiento de filesystem (sin tocar gateway)
 
-1. `vor_policy::tests::auto_write_under_projects_is_auto_for_creation` — crear `D:\Proyectos\foo\bar.txt` (no existe) → `Auto`, `reason_code = filesystem_rule`.
+1. `vor_policy::tests::auto_write_under_projects_is_auto_for_creation` — crear `D:\Workspaces\foo\bar.txt` (no existe) → `Auto`, `reason_code = filesystem_rule`.
 2. `vor_policy::tests::auto_write_overwrite_requires_target_precondition_marker` — la policy *fina* eleva sobrescritura sin precondition a `Approval`, pero con precondition la deja `Auto`. La regla fina se modela exponiendo `reason_code = auto_write_precondition_missing` para que el gateway sepa por qué.
 3. `vor_policy::tests::auto_write_size_limit_promotes_to_approval` — contenido > `max_auto_write_bytes` → `Approval`, `reason_code = auto_write_size_exceeded`.
 4. `vor_policy::tests::auto_write_sensitive_glob_promotes_to_approval` — path en `.git/`, `.ssh/`, `*.exe`, `*.bat`, `*.ps1`, `*.sh` → `Approval`, `reason_code = auto_write_sensitive_path`.
@@ -320,7 +328,7 @@ Cada rebanada termina con `cargo test --workspace` y `cargo clippy --workspace -
 - **Que `policy.example.yaml` siga parseando con los campos nuevos sin `version: 2`**: la validación exige `version == 1`, así que los campos nuevos deben ser opcionales con `#[serde(default)]`. Lo afirmo en la sección 3.1 pero no lo verifiqué ejecutando el parser.
 ---
 
-## Revision de seguridad (prevalece sobre el borrador)
+## Revision de revisión de seguridad independiente (prevalece sobre el borrador)
 
 **R1. El producto es Windows; el borrador razona en Unix.** Los globs sensibles por defecto deben incluir, ademas de
 los de shell: `**/*.ps1`, `**/*.psm1`, `**/*.psd1`, `**/*.bat`, `**/*.cmd`, `**/*.vbs`, `**/*.js` fuera de proyectos

@@ -70,7 +70,35 @@ impl Broker {
         now_unix_ms: u64,
     ) -> Result<Authorization, CoreError> {
         request.verify(now_unix_ms)?;
-        let decision = self.policy.evaluate(&request);
+        let mut decision = self.policy.evaluate(&request);
+        let content_bytes = request
+            .envelope
+            .parameters
+            .get("content_bytes")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0);
+        if decision.kind == PolicyDecisionKind::Auto
+            && request.envelope.action == "filesystem.write"
+        {
+            let since = now_unix_ms.saturating_sub(60_000);
+            let count = self.ledger.count_policy_auto_writes_since(
+                &request.envelope.actor_id,
+                &request.envelope.device_id,
+                since,
+            )?;
+            let bytes = self.ledger.sum_policy_auto_write_bytes_since(
+                &request.envelope.actor_id,
+                &request.envelope.device_id,
+                since,
+            )?;
+            if count >= self.policy.config().auto_write.max_files_per_minute
+                || bytes.saturating_add(content_bytes)
+                    > self.policy.config().auto_write.max_bytes_per_minute as u64
+            {
+                decision.kind = PolicyDecisionKind::Approval;
+                decision.reason_code = "auto_write_rate_limited".into();
+            }
+        }
         let outcome = match decision.kind {
             PolicyDecisionKind::Auto => "auto",
             PolicyDecisionKind::Approval => "approval",
@@ -86,6 +114,15 @@ impl Broker {
             target: request.envelope.target.clone(),
             outcome: outcome.into(),
             envelope_digest: request.envelope_digest,
+            authority: if decision.kind == PolicyDecisionKind::Auto {
+                "policy"
+            } else {
+                "signature"
+            }
+            .into(),
+            policy_rule: decision.reason_code.clone(),
+            policy_hash: self.policy.policy_hash().to_owned(),
+            content_bytes,
         })?;
         Ok(Authorization { request, decision })
     }
@@ -150,6 +187,10 @@ impl Broker {
             target: request.envelope.target.clone(),
             outcome: outcome.to_owned(),
             envelope_digest: request.envelope_digest,
+            authority: "signature".into(),
+            policy_rule: self.policy.evaluate(request).reason_code,
+            policy_hash: self.policy.policy_hash().to_owned(),
+            content_bytes: 0,
         })?;
         Ok(())
     }
@@ -180,6 +221,15 @@ impl Broker {
             target: request.envelope.target.clone(),
             outcome: outcome.into(),
             envelope_digest: request.envelope_digest,
+            authority: if authorization.is_auto() {
+                "policy"
+            } else {
+                "signature"
+            }
+            .into(),
+            policy_rule: authorization.decision.reason_code.clone(),
+            policy_hash: self.policy.policy_hash().to_owned(),
+            content_bytes: 0,
         })?;
         Ok(())
     }
@@ -288,10 +338,51 @@ mod tests {
     fn auto_request_is_audited_before_return() {
         let (mut broker, _dir) = broker();
         let authorization = broker
-            .authorize_at(request("filesystem.read", r"D:\Proyectos\x"), 1)
+            .authorize_at(request("filesystem.read", r"D:\Workspaces\x"), 1)
             .unwrap();
         assert!(authorization.is_auto());
         assert_eq!(broker.ledger().last_sequence(), 1);
+    }
+
+    #[test]
+    fn auto_write_byte_budget_requires_approval_before_exceeding_window() {
+        let (mut broker, _dir) = broker();
+        for index in 0..8 {
+            let mut envelope = request("filesystem.write", r"D:\Workspaces\x").envelope;
+            envelope.request_id = format!("write-{index}");
+            envelope.nonce = vec![index; 16];
+            envelope
+                .parameters
+                .insert("content_bytes".into(), (1024_u64 * 1024).into());
+            envelope
+                .parameters
+                .insert("expected_target_sha256".into(), "absent".into());
+            let authorization = broker
+                .authorize_at(
+                    ActionRequest::seal(envelope).unwrap(),
+                    1_000 + u64::from(index),
+                )
+                .unwrap();
+            assert!(authorization.is_auto(), "write {index}");
+        }
+
+        let mut envelope = request("filesystem.write", r"D:\Workspaces\x").envelope;
+        envelope.request_id = "write-over-budget".into();
+        envelope.nonce = vec![9; 16];
+        envelope
+            .parameters
+            .insert("content_bytes".into(), 1_u64.into());
+        envelope
+            .parameters
+            .insert("expected_target_sha256".into(), "absent".into());
+        let authorization = broker
+            .authorize_at(ActionRequest::seal(envelope).unwrap(), 2_000)
+            .unwrap();
+        assert!(authorization.requires_approval());
+        assert_eq!(
+            authorization.decision.reason_code,
+            "auto_write_rate_limited"
+        );
     }
 
     #[test]
@@ -398,7 +489,7 @@ mod tests {
     #[test]
     fn mutated_request_is_rejected_before_audit() {
         let (mut broker, _dir) = broker();
-        let mut request = request("filesystem.read", r"D:\Proyectos\x");
+        let mut request = request("filesystem.read", r"D:\Workspaces\x");
         request.envelope.target.push_str("\\changed");
         let result = broker.authorize_at(request, 1);
         assert!(matches!(

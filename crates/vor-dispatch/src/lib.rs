@@ -102,6 +102,17 @@ impl ReadOnlyDispatcher {
         self.broker.ledger().last_sequence()
     }
 
+    #[cfg(test)]
+    pub(crate) fn audit_records_for_organization(
+        &self,
+        organization_id: &str,
+    ) -> Result<Vec<vor_audit::AuditRecord>, DispatchError> {
+        Ok(self
+            .broker
+            .ledger()
+            .records_for_organization(organization_id)?)
+    }
+
     #[cfg(feature = "fault-injection")]
     pub fn inject_next_approval_claim_failure(&mut self) {
         self.broker.inject_next_approval_claim_failure();
@@ -382,15 +393,6 @@ impl ReadOnlyDispatcher {
         if authorization.is_denied() {
             return Err(DispatchError::Denied);
         }
-        if !authorization.requires_approval() {
-            self.broker.audit_outcome_at(
-                &authorization,
-                "remote_approval_policy_required",
-                now_unix_ms,
-            )?;
-            return Err(DispatchError::RemoteApprovalPolicyRequired);
-        }
-
         let mut edit_metadata = None;
         if let Some(value) = authorization.request.envelope.parameters.get("edit_recipe") {
             let edits: Vec<TextEdit> = serde_json::from_value(value.clone())
@@ -410,6 +412,26 @@ impl ReadOnlyDispatcher {
                 "expected_target_sha256".into(),
                 serde_json::Value::String(prepared.original_sha256),
             );
+            parameters.insert(
+                "content_bytes".into(),
+                serde_json::Value::from(prepared.content.len()),
+            );
+            if original
+                .parameters
+                .get("policy_attempt")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+            {
+                parameters.insert("policy_attempt".into(), serde_json::Value::Bool(true));
+            }
+            if original
+                .parameters
+                .get("approval_path")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+            {
+                parameters.insert("approval_path".into(), serde_json::Value::Bool(true));
+            }
             if let Some(workspace) = original.parameters.get("workspace_id") {
                 parameters.insert("workspace_id".into(), workspace.clone());
             }
@@ -428,6 +450,29 @@ impl ReadOnlyDispatcher {
             .map_err(|_| DispatchError::InvalidFilesystemParameters)?;
             authorization = self.broker.authorize_at(transformed, now_unix_ms)?;
             edit_metadata = Some((prepared.diff_summary, prepared.diff_truncated));
+        }
+
+        if authorization.is_auto()
+            && authorization
+                .request
+                .envelope
+                .parameters
+                .get("policy_attempt")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+        {
+            let (output, content_type) = self.execute_authorized(&authorization)?;
+            self.broker
+                .audit_outcome_at(&authorization, "executed", now_unix_ms)?;
+            return success_result(&authorization, output, content_type, now_unix_ms);
+        }
+        if !authorization.requires_approval() {
+            self.broker.audit_outcome_at(
+                &authorization,
+                "remote_approval_policy_required",
+                now_unix_ms,
+            )?;
+            return Err(DispatchError::RemoteApprovalPolicyRequired);
         }
 
         let challenge_expires_at = now_unix_ms
@@ -618,6 +663,31 @@ impl ReadOnlyDispatcher {
                 serde_json::to_vec(&self.fs.file_info(authorization)?)?,
                 "application/json",
             )),
+            "filesystem.write" => {
+                let content = remote_write_content(&authorization.request)?;
+                if authorization
+                    .request
+                    .envelope
+                    .parameters
+                    .get("content_bytes")
+                    .and_then(serde_json::Value::as_u64)
+                    != u64::try_from(content.len()).ok()
+                {
+                    return Err(DispatchError::InvalidFilesystemParameters);
+                }
+                let receipt = self.fs.write(authorization, &content)?;
+                Ok((
+                    serde_json::to_vec(&serde_json::json!({
+                        "target": receipt.target.to_string_lossy(),
+                        "content_sha256": receipt.content_sha256,
+                        "backup_created": receipt.backup_path.is_some(),
+                        "journaled": true,
+                        "authority": "policy",
+                        "policy_rule": authorization.decision.reason_code,
+                    }))?,
+                    "application/json",
+                ))
+            }
             "git.status" => Ok((
                 serde_json::to_vec(&self.git.status(authorization)?)?,
                 "application/json",
@@ -1230,6 +1300,44 @@ audit:
         })
         .unwrap()
     }
+
+    fn policy_dispatcher(root: &Path, max_per_minute: u32) -> ReadOnlyDispatcher {
+        let policy = root.join("policy.yaml");
+        let escaped = root.to_string_lossy().replace('\\', "\\\\");
+        let yaml = format!(
+            r#"version: 1
+policy_id: policy-write-test
+mode: policy
+auto_write:
+  max_bytes: 1048576
+  max_files_per_minute: {max_per_minute}
+  max_bytes_per_minute: 8388608
+filesystem:
+  - path: "{escaped}"
+    read: auto
+    write: auto
+terminal: {{ default: approval, project_tests: approval, destructive: approval, elevated: approval }}
+process: {{ list: auto, inspect: auto, terminate: approval }}
+browser: {{ authenticated_session_use: approval, secret_extraction: deny, publish: approval, purchase: deny }}
+desktop: {{ enabled: false }}
+network: {{ public_listener_fallback: deny }}
+audit: {{ required: true, fail_if_unwritable: true }}
+"#
+        );
+        fs::write(&policy, yaml).unwrap();
+        ReadOnlyDispatcher::open(DispatchConfig {
+            device_id: "device-1".into(),
+            policy_path: policy,
+            audit_sqlite: root.join("audit.db"),
+            audit_jsonl: root.join("audit.jsonl"),
+            journal_dir: root.join("journal"),
+            allowed_roots: vec![root.to_path_buf()],
+            git_executable: find_git(),
+            max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
+            browser: None,
+        })
+        .unwrap()
+    }
     fn request(action: &str, target: &str, device_id: &str) -> v1::ActionRequest {
         let request = ActionRequest::seal(ActionEnvelope {
             request_id: format!("req-{action}-{target}"),
@@ -1424,6 +1532,10 @@ audit:
         parameters.insert(
             "content_sha256".into(),
             serde_json::Value::String(sha256_hex_bytes(content)),
+        );
+        parameters.insert(
+            "content_bytes".into(),
+            serde_json::Value::from(content.len()),
         );
         parameters.insert(
             "expected_target_sha256".into(),
@@ -1786,7 +1898,7 @@ audit:
             .add_trusted_approver("operator-1", signing.verifying_key().to_bytes())
             .unwrap();
 
-        let hostile_request_ids = vec![
+        let hostile_request_ids = [
             r"..\neighbor-tenant\escape",
             "../neighbor-tenant/escape",
             r"C:\outside\escape",
@@ -2803,6 +2915,104 @@ audit:
     }
 
     #[test]
+    fn policy_write_is_applied_journaled_and_audited_distinctly() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("auto.txt");
+        let mut dispatcher = policy_dispatcher(dir.path(), 60);
+        let mut request = write_request("req-policy-write", &target, b"new", "absent");
+        request
+            .envelope
+            .parameters
+            .insert("policy_attempt".into(), true.into());
+        let request = ActionRequest::seal(request.envelope).unwrap();
+        let result = dispatcher
+            .dispatch_proto_at(&action_request_to_proto(&request).unwrap(), 1_000)
+            .unwrap();
+        assert_eq!(result.status, "ok");
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        let receipt: serde_json::Value = serde_json::from_slice(&result.output).unwrap();
+        assert_eq!(receipt["authority"], "policy");
+        assert!(receipt["journaled"].as_bool().unwrap());
+        let records = dispatcher.audit_records_for_organization("org-1").unwrap();
+        assert!(
+            records
+                .iter()
+                .any(|record| record.event.outcome == "executed"
+                    && record.event.authority == "policy"
+                    && record.event.policy_rule == "auto_write_safe"
+                    && !record.event.policy_hash.is_empty())
+        );
+    }
+
+    #[test]
+    fn policy_write_race_fails_without_effect() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("race.txt");
+        fs::write(&target, b"read-state").unwrap();
+        let expected = sha256_hex_bytes(b"read-state");
+        fs::write(&target, b"raced-state").unwrap();
+        let mut dispatcher = policy_dispatcher(dir.path(), 60);
+        let mut request = write_request("req-policy-race", &target, b"new", &expected);
+        request
+            .envelope
+            .parameters
+            .insert("policy_attempt".into(), true.into());
+        let request = ActionRequest::seal(request.envelope).unwrap();
+        let result =
+            dispatcher.dispatch_proto_at(&action_request_to_proto(&request).unwrap(), 1_000);
+        assert!(matches!(
+            result,
+            Err(DispatchError::Fs(vor_fs::FsError::TargetPreconditionFailed))
+        ));
+        assert_eq!(fs::read(&target).unwrap(), b"raced-state");
+    }
+
+    #[test]
+    fn policy_write_rejects_forged_content_size_without_effect() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("forged-size.txt");
+        let mut dispatcher = policy_dispatcher(dir.path(), 60);
+        let mut request = write_request("req-policy-forged-size", &target, b"actual", "absent");
+        request
+            .envelope
+            .parameters
+            .insert("content_bytes".into(), 1.into());
+        request
+            .envelope
+            .parameters
+            .insert("policy_attempt".into(), true.into());
+        let request = ActionRequest::seal(request.envelope).unwrap();
+        let result =
+            dispatcher.dispatch_proto_at(&action_request_to_proto(&request).unwrap(), 1_000);
+        assert!(matches!(
+            result,
+            Err(DispatchError::InvalidFilesystemParameters)
+        ));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn policy_write_rate_limit_returns_approval_challenge() {
+        let dir = tempdir().unwrap();
+        let mut dispatcher = policy_dispatcher(dir.path(), 1);
+        for (index, expected_status) in [(0, "ok"), (1, "approval_required")] {
+            let target = dir.path().join(format!("rate-{index}.txt"));
+            let mut request = write_request(&format!("req-rate-{index}"), &target, b"x", "absent");
+            request
+                .envelope
+                .parameters
+                .insert("policy_attempt".into(), true.into());
+            request.envelope.nonce = vec![index as u8 + 1; 16];
+            let request = ActionRequest::seal(request.envelope).unwrap();
+            let result = dispatcher
+                .dispatch_proto_at(&action_request_to_proto(&request).unwrap(), 1_000 + index)
+                .unwrap();
+            assert_eq!(result.status, expected_status);
+            assert_eq!(target.exists(), index == 0);
+        }
+    }
+
+    #[test]
     fn approved_filesystem_write_is_signed_preconditioned_and_one_shot() {
         let dir = tempdir().unwrap();
         let target = dir.path().join("approved.txt");
@@ -2826,6 +3036,13 @@ audit:
         assert_eq!(result.status, "ok");
         assert_eq!(fs::read(&target).unwrap(), b"new");
         assert_eq!(dispatcher.audit_sequence(), 4);
+        let signed_records = dispatcher.audit_records_for_organization("org-1").unwrap();
+        assert!(signed_records.iter().any(|record| {
+            record.event.outcome == "executed" && record.event.authority == "signature"
+        }));
+        assert!(!signed_records.iter().any(|record| {
+            record.event.outcome == "executed" && record.event.authority == "policy"
+        }));
 
         let replay = dispatcher.dispatch_approved_proto_at(&approved, 2_500);
         assert!(matches!(

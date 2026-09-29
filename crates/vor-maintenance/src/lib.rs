@@ -689,32 +689,11 @@ fn ensure_output_path_within(path: &Path, root: &Path) -> Result<(), Maintenance
 }
 
 fn ensure_within(path: &Path, root: &Path) -> Result<(), MaintenanceError> {
-    if path_within(path, root) {
+    if vor_path::path_within(path, root) {
         Ok(())
     } else {
         Err(MaintenanceError::OutsideAllowedRoot)
     }
-}
-
-#[cfg(windows)]
-fn path_within(path: &Path, root: &Path) -> bool {
-    let path = path
-        .to_string_lossy()
-        .replace('/', "\\")
-        .to_ascii_lowercase();
-    let root = root
-        .to_string_lossy()
-        .replace('/', "\\")
-        .to_ascii_lowercase();
-    path == root
-        || path
-            .strip_prefix(&root)
-            .is_some_and(|suffix| suffix.starts_with('\\'))
-}
-
-#[cfg(not(windows))]
-fn path_within(path: &Path, root: &Path) -> bool {
-    path == root || path.starts_with(root)
 }
 
 #[cfg(windows)]

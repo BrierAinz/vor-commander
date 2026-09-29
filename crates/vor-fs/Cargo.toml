@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 vor-core = { path = "../vor-core" }
 vor-protocol = { path = "../vor-protocol" }
+vor-path = { path = "../vor-path" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

@@ -1,8 +1,14 @@
 ﻿version: 1
 policy_id: local-default
+mode: policy
+
+auto_write:
+  max_bytes: 1048576
+  max_files_per_minute: 60
+  max_bytes_per_minute: 8388608
 
 filesystem:
-  - path: "D:\\Proyectos\\10_Active\\vor-commander\\state\\local\\m1-canary"
+  - path: "D:\\Projects\\vor-commander\\state\\local\\m1-canary"
     read: auto
     write: approval
   - path: "D:\\Proyectos"
@@ -11,7 +17,7 @@ filesystem:
   - path: "D:\\"
     read: auto
     write: approval
-  - path: "C:\\Users\\example"
+  - path: "C:\\Users\\ExampleUser"
     read: approval
     write: approval
   - path: "C:\\Windows"

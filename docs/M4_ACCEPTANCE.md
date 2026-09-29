@@ -88,7 +88,7 @@ M4 now has hardened local tenant/account primitives, authenticated HTTP gateway 
 - `cargo fmt --all -- --check`: PASS.
 - `git diff --check -- .`: PASS.
 - `scripts/local/check-worktree-text.ps1`: PASS, selected/read 150 files.
-- `python -m unittest tests.test_check_worktree_text -v`: PASS, 4 tests.
+- `C:\Users\ExampleUser\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m unittest tests.test_check_worktree_text -v`: PASS, 4 tests.
 
 ## Remaining Gates Before PASS
 

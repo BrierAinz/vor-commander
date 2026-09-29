@@ -14,6 +14,8 @@ use vor_protocol::PolicyDecisionKind;
 
 #[cfg(windows)]
 use std::os::windows::{ffi::OsStrExt, fs::MetadataExt};
+#[cfg(all(windows, test))]
+use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
     MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
@@ -352,22 +354,28 @@ impl FsWorker {
             query,
             regex,
             file_glob,
-            max_matches,
-            max_file_bytes,
-            MAX_SEARCH_DURATION,
+            ContentSearchLimits {
+                max_matches,
+                max_file_bytes,
+                timeout: MAX_SEARCH_DURATION,
+            },
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn search_content_with_timeout(
         &self,
         authorization: &Authorization,
         query: &str,
         regex: bool,
         file_glob: &str,
-        max_matches: usize,
-        max_file_bytes: usize,
-        timeout: Duration,
+        limits: ContentSearchLimits,
     ) -> Result<ContentSearchResult, FsError> {
+        let ContentSearchLimits {
+            max_matches,
+            max_file_bytes,
+            timeout,
+        } = limits;
         ensure_auto_action(authorization, "filesystem.search_content")?;
         if query.is_empty()
             || max_matches == 0
@@ -507,7 +515,7 @@ impl FsWorker {
         content: &[u8],
     ) -> Result<WriteReceipt, FsError> {
         ensure_auto_action(authorization, "filesystem.write")?;
-        self.write_inner(authorization, content, false)
+        self.write_inner(authorization, content, true)
     }
 
     pub fn write_approved(
@@ -532,8 +540,16 @@ impl FsWorker {
             return Err(FsError::ContentDigestMismatch);
         }
 
-        let target =
-            self.resolve_write_target(Path::new(&authorization.request.envelope.target))?;
+        let requested_target = Path::new(&authorization.request.envelope.target);
+        // All checks below and the eventual replacement use this canonical target. The parent
+        // is not held open, so a directory rename/replacement can still race these pathname calls.
+        let target = self.resolve_write_target(requested_target)?;
+        if authorization.decision.kind == PolicyDecisionKind::Auto
+            && vor_path::sensitive_path(&target)
+        {
+            return Err(FsError::ApprovalRequired);
+        }
+        reject_reparse_components(requested_target)?;
         let target_precondition = if require_target_precondition {
             Some(required_target_precondition(authorization)?)
         } else {
@@ -569,8 +585,7 @@ impl FsWorker {
         if let Some(precondition) = &target_precondition
             && let Err(error) = verify_target_precondition(&target, precondition)
         {
-            let _ = fs::remove_file(&temp_path);
-            return Err(error);
+            return Err(clean_up_temp_after_error(&temp_path, error));
         }
 
         if let Some(backup) = &backup_path {
@@ -633,12 +648,13 @@ impl FsWorker {
 
     fn resolve_write_target(&self, target: &Path) -> Result<PathBuf, FsError> {
         ensure_no_parent_dir(target)?;
-        reject_reparse_components(target)?;
         if target.exists() {
             if !fs::metadata(target)?.is_file() {
                 return Err(FsError::UnsafePath);
             }
-            return self.resolve_existing(target);
+            let resolved = fs::canonicalize(target)?;
+            self.ensure_allowed(&resolved)?;
+            return Ok(resolved);
         }
         let parent = target.parent().ok_or(FsError::UnsafePath)?;
         let file_name = target.file_name().ok_or(FsError::UnsafePath)?;
@@ -651,7 +667,7 @@ impl FsWorker {
         if self
             .allowed_roots
             .iter()
-            .any(|root| path_within(path, root))
+            .any(|root| vor_path::path_within(path, root))
         {
             Ok(())
         } else {
@@ -672,6 +688,16 @@ impl FsWorker {
         drop(file);
         atomic_replace(&temp, path)?;
         Ok(())
+    }
+}
+
+fn clean_up_temp_after_error(temp_path: &Path, operation: FsError) -> FsError {
+    match fs::remove_file(temp_path) {
+        Ok(()) => operation,
+        Err(cleanup) => FsError::CleanupFailed {
+            operation: Box::new(operation),
+            cleanup,
+        },
     }
 }
 
@@ -798,19 +824,6 @@ fn ensure_no_parent_dir(path: &Path) -> Result<(), FsError> {
     Ok(())
 }
 
-fn path_within(path: &Path, root: &Path) -> bool {
-    let normalize = |value: &Path| {
-        value
-            .to_string_lossy()
-            .replace('/', "\\")
-            .trim_end_matches('\\')
-            .to_ascii_lowercase()
-    };
-    let path = normalize(path);
-    let root = normalize(root);
-    path == root || path.starts_with(&(root + "\\"))
-}
-
 fn reject_reparse_components(path: &Path) -> Result<(), FsError> {
     #[cfg(windows)]
     {
@@ -837,7 +850,7 @@ fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
     }
     #[cfg(windows)]
     {
-        return metadata.file_attributes() & REPARSE_POINT_ATTRIBUTE != 0;
+        metadata.file_attributes() & REPARSE_POINT_ATTRIBUTE != 0
     }
     #[cfg(not(windows))]
     {
@@ -857,6 +870,12 @@ fn system_time_ms(value: Option<SystemTime>) -> Option<u64> {
 struct DecodedText {
     text: String,
     encoding: &'static str,
+}
+
+struct ContentSearchLimits {
+    max_matches: usize,
+    max_file_bytes: usize,
+    timeout: Duration,
 }
 
 fn decode_edit_text(bytes: &[u8]) -> Result<DecodedText, FsError> {
@@ -1021,12 +1040,11 @@ fn decode_utf16(
     convert: fn([u8; 2]) -> u16,
     encoding: &'static str,
 ) -> Option<DecodedText> {
-    if payload.len() % 2 != 0 {
+    let (pairs, remainder) = payload.as_chunks::<2>();
+    if !remainder.is_empty() {
         return None;
     }
-    let units = payload
-        .chunks_exact(2)
-        .map(|chunk| convert([chunk[0], chunk[1]]));
+    let units = pairs.iter().copied().map(convert);
     let text = char::decode_utf16(units)
         .collect::<Result<String, _>>()
         .ok()?;
@@ -1139,6 +1157,13 @@ pub enum FsError {
     InvalidTargetPrecondition,
     #[error("target changed or does not match the expected digest")]
     TargetPreconditionFailed,
+    #[error(
+        "filesystem operation failed ({operation}) and temporary-file cleanup also failed: {cleanup}"
+    )]
+    CleanupFailed {
+        operation: Box<FsError>,
+        cleanup: io::Error,
+    },
     #[error("operation was denied by policy")]
     Denied,
     #[error("authorization is for a different action")]
@@ -1196,6 +1221,12 @@ mod tests {
         let mut parameters = BTreeMap::new();
         if let Some(content) = content {
             parameters.insert("content_sha256".into(), Value::String(sha256_hex(content)));
+            let precondition = if target.exists() {
+                sha256_file(target).unwrap()
+            } else {
+                "absent".into()
+            };
+            parameters.insert("expected_target_sha256".into(), Value::String(precondition));
         }
         let request = ActionRequest::seal(ActionEnvelope {
             request_id: "req-fs-1".into(),
@@ -1425,7 +1456,17 @@ mod tests {
             Err(FsError::InvalidParameters)
         ));
         assert!(matches!(
-            worker.search_content_with_timeout(&auth, "x", false, "**", 1, 1, Duration::ZERO),
+            worker.search_content_with_timeout(
+                &auth,
+                "x",
+                false,
+                "**",
+                ContentSearchLimits {
+                    max_matches: 1,
+                    max_file_bytes: 1,
+                    timeout: Duration::ZERO,
+                },
+            ),
             Err(FsError::SearchTimeout)
         ));
     }
@@ -1571,6 +1612,94 @@ mod tests {
             Err(FsError::ApprovalRequired)
         ));
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn auto_write_rechecks_canonical_sensitive_path() {
+        let root = tempdir().unwrap();
+        let sensitive = root.path().join(".git");
+        fs::create_dir(&sensitive).unwrap();
+        let target = sensitive.join("config");
+        let worker =
+            FsWorker::new([root.path().to_path_buf()], root.path().join("journal")).unwrap();
+        let auth = authorization("filesystem.write", &target, Some(b"x"));
+        assert!(matches!(
+            worker.write(&auth, b"x"),
+            Err(FsError::ApprovalRequired)
+        ));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn auto_write_rejects_persistence_file_even_with_auto_authorization() {
+        let root = tempdir().unwrap();
+        let target = root.path().join(".bashrc");
+        let worker =
+            FsWorker::new([root.path().to_path_buf()], root.path().join("journal")).unwrap();
+        let auth = authorization("filesystem.write", &target, Some(b"payload"));
+
+        assert!(matches!(
+            worker.write(&auth, b"payload"),
+            Err(FsError::ApprovalRequired)
+        ));
+        assert!(!target.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn auto_write_through_short_name_or_junction_to_sensitive_directory_requires_approval() {
+        use std::process::Command;
+
+        let root = tempdir().unwrap();
+        let sensitive = root.path().join(".github");
+        let workflows = sensitive.join("workflows");
+        fs::create_dir_all(&workflows).unwrap();
+        let wide = sensitive
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        let required = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+        let short_path = if required > 0 {
+            let mut output = vec![0u16; required as usize + 1];
+            let written = unsafe {
+                GetShortPathNameW(wide.as_ptr(), output.as_mut_ptr(), output.len() as u32)
+            };
+            (written > 0)
+                .then(|| PathBuf::from(String::from_utf16_lossy(&output[..written as usize])))
+        } else {
+            None
+        };
+        let alias = match short_path.filter(|path| {
+            !path
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&sensitive.to_string_lossy())
+        }) {
+            Some(path) => path,
+            None => {
+                eprintln!("8.3 aliases are unavailable on the temporary volume; using a junction");
+                let junction = root.path().join("GITHUB~1");
+                assert!(
+                    Command::new("cmd")
+                        .args(["/c", "mklink", "/J"])
+                        .arg(&junction)
+                        .arg(&sensitive)
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+                junction
+            }
+        };
+        let target = alias.join("workflows").join("ci.yml");
+        let worker =
+            FsWorker::new([root.path().to_path_buf()], root.path().join("journal")).unwrap();
+        let auth = authorization("filesystem.write", &target, Some(b"x"));
+        assert!(matches!(
+            worker.write(&auth, b"x"),
+            Err(FsError::ApprovalRequired)
+        ));
+        assert!(!workflows.join("ci.yml").exists());
     }
 
     fn edit_authorization(target: &Path) -> Authorization {
@@ -1725,5 +1854,21 @@ mod tests {
             }],
         );
         assert!(matches!(result, Err(FsError::ReparsePoint(_))));
+    }
+
+    #[test]
+    fn cleanup_failure_preserves_both_errors() {
+        let root = tempdir().unwrap();
+        let not_a_file = root.path().join("temp-directory");
+        fs::create_dir(&not_a_file).unwrap();
+
+        let error = clean_up_temp_after_error(&not_a_file, FsError::TargetPreconditionFailed);
+        assert!(matches!(
+            error,
+            FsError::CleanupFailed {
+                operation,
+                cleanup: _
+            } if matches!(*operation, FsError::TargetPreconditionFailed)
+        ));
     }
 }

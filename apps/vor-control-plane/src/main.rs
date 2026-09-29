@@ -15,6 +15,8 @@ use vor_private_grpc::{
 };
 use vor_relay::{RelayConfig, RelayHub};
 
+type AnyError = Box<dyn Error + Send + Sync>;
+
 #[derive(Debug, Deserialize)]
 struct DeviceRegistryFile {
     devices: Vec<DeviceRegistryEntry>,
@@ -49,8 +51,19 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run() -> Result<(), Box<dyn Error>> {
+async fn run() -> Result<(), AnyError> {
     let config = parse_args(env::args().skip(1).collect())?;
+    let cancellation = CancellationToken::new();
+    let ctrl = cancellation.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            ctrl.cancel();
+        }
+    });
+    run_services(config, cancellation).await
+}
+
+async fn run_services(config: Config, cancellation: CancellationToken) -> Result<(), AnyError> {
     let gateway_grants = GrantStore::open(&config.gateway_state)?;
     let relay_grants = GrantStore::open(&config.relay_state)?;
     let registry_bytes = std::fs::read(&config.registry_path)?;
@@ -71,13 +84,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
         server_key_pem: std::fs::read(&config.server_key_path)?,
     };
 
-    let cancellation = CancellationToken::new();
-    let ctrl = cancellation.clone();
-    tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            ctrl.cancel();
-        }
-    });
     let private = vor_private_grpc::serve_with_hub(
         PrivateLinkConfig {
             bind: config.private_bind,
@@ -108,16 +114,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
     );
 
     tokio::pin!(private, relay, gateway);
-    let result: Result<(), Box<dyn Error>> = tokio::select! {
-        value = &mut private => value.map_err(|error| Box::new(error) as Box<dyn Error>),
-        value = &mut relay => value.map_err(|error| Box::new(error) as Box<dyn Error>),
-        value = &mut gateway => value.map_err(|error| Box::new(error) as Box<dyn Error>),
+    let result: Result<(), AnyError> = tokio::select! {
+        value = &mut private => value.map_err(|error| Box::new(error) as AnyError),
+        value = &mut relay => value.map_err(|error| Box::new(error) as AnyError),
+        value = &mut gateway => value.map_err(|error| Box::new(error) as AnyError),
     };
     cancellation.cancel();
     result?;
     Ok(())
 }
-fn parse_args(args: Vec<String>) -> Result<Config, Box<dyn Error>> {
+
+fn parse_args(args: Vec<String>) -> Result<Config, AnyError> {
     let mut gateway_bind: SocketAddr = "127.0.0.1:8742".parse()?;
     let mut relay_bind: SocketAddr = "127.0.0.1:8789".parse()?;
     let mut private_bind: SocketAddr = "127.0.0.1:8790".parse()?;
@@ -171,7 +178,7 @@ fn parse_args(args: Vec<String>) -> Result<Config, Box<dyn Error>> {
     })
 }
 
-fn next<'a>(args: &'a [String], index: &mut usize, flag: &str) -> Result<&'a str, Box<dyn Error>> {
+fn next<'a>(args: &'a [String], index: &mut usize, flag: &str) -> Result<&'a str, AnyError> {
     *index += 1;
     args.get(*index)
         .map(String::as_str)
@@ -182,4 +189,106 @@ fn help() -> &'static str {
     "vor-control-plane --gateway-state PATH --relay-state PATH --ca CA.pem \
 --server-cert server.pem --server-key server-key.pem --device-registry devices.json \
 [--gateway-bind 127.0.0.1:8742] [--relay-bind 127.0.0.1:8789] [--private-bind 127.0.0.1:8790]"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use vor_identity::{CertificateAuthority, certificate_der_to_pem, private_key_der_to_pem};
+
+    fn free_address() -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap()
+    }
+
+    async fn wait_for_listener(
+        address: SocketAddr,
+        task: &mut tokio::task::JoinHandle<Result<(), AnyError>>,
+    ) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    connection = tokio::net::TcpStream::connect(address) => {
+                        if connection.is_ok() {
+                            break;
+                        }
+                    }
+                    result = &mut *task => panic!("control plane exited before listening on {address}: {result:?}"),
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn starts_all_services_and_stops_on_cancellation() {
+        let root = tempfile::tempdir().unwrap();
+        let ca = CertificateAuthority::new("control-plane-test-ca").unwrap();
+        let server = ca.issue_server_certificate("localhost").unwrap();
+        let (server_cert, server_key) = server.into_parts();
+        let ca_path = root.path().join("ca.pem");
+        let cert_path = root.path().join("server.pem");
+        let key_path = root.path().join("server-key.pem");
+        let registry_path = root.path().join("devices.json");
+        std::fs::write(&ca_path, certificate_der_to_pem(&ca.certificate_der())).unwrap();
+        std::fs::write(&cert_path, certificate_der_to_pem(&server_cert)).unwrap();
+        std::fs::write(&key_path, private_key_der_to_pem(&server_key)).unwrap();
+        let registry = serde_json::json!({
+            "devices": [{
+                "device_id": "test-device",
+                "certificate_der_base64": STANDARD.encode(&server_cert),
+            }],
+        });
+        std::fs::File::create(&registry_path)
+            .unwrap()
+            .write_all(registry.to_string().as_bytes())
+            .unwrap();
+
+        let gateway_bind = free_address();
+        let relay_bind = free_address();
+        let private_bind = free_address();
+        let cancellation = CancellationToken::new();
+        let shutdown = cancellation.clone();
+        let mut task = tokio::spawn(run_services(
+            Config {
+                gateway_bind,
+                relay_bind,
+                private_bind,
+                gateway_state: root.path().join("gateway-state"),
+                relay_state: root.path().join("relay-state"),
+                ca_path,
+                server_cert_path: cert_path,
+                server_key_path: key_path,
+                registry_path,
+            },
+            shutdown,
+        ));
+
+        wait_for_listener(gateway_bind, &mut task).await;
+        wait_for_listener(relay_bind, &mut task).await;
+        wait_for_listener(private_bind, &mut task).await;
+        let mut gateway = tokio::net::TcpStream::connect(gateway_bind).await.unwrap();
+        gateway
+            .write_all(b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        gateway.read_to_end(&mut response).await.unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 200"));
+
+        cancellation.cancel();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(5), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_ok()
+        );
+    }
 }

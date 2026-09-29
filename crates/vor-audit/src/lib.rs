@@ -30,6 +30,14 @@ pub struct AuditEvent {
     pub target: String,
     pub outcome: String,
     pub envelope_digest: Digest32,
+    #[serde(default)]
+    pub authority: String,
+    #[serde(default)]
+    pub policy_rule: String,
+    #[serde(default)]
+    pub policy_hash: String,
+    #[serde(default)]
+    pub content_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -272,6 +280,34 @@ impl Ledger {
             }
         }
         Ok(out)
+    }
+
+    pub fn count_policy_auto_writes_since(
+        &self,
+        actor_id: &str,
+        device_id: &str,
+        since_unix_ms: u64,
+    ) -> Result<u32, AuditError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM audit_records WHERE json_extract(event_json, '$.actor_id') = ?1 AND json_extract(event_json, '$.device_id') = ?2 AND json_extract(event_json, '$.action') = 'filesystem.write' AND json_extract(event_json, '$.outcome') = 'auto' AND json_extract(event_json, '$.authority') = 'policy' AND json_extract(event_json, '$.timestamp_unix_ms') >= ?3",
+            params![actor_id, device_id, i64::try_from(since_unix_ms).map_err(|_| AuditError::InvalidSequence)?],
+            |row| row.get(0),
+        )?;
+        u32::try_from(count).map_err(|_| AuditError::InvalidSequence)
+    }
+
+    pub fn sum_policy_auto_write_bytes_since(
+        &self,
+        actor_id: &str,
+        device_id: &str,
+        since_unix_ms: u64,
+    ) -> Result<u64, AuditError> {
+        let bytes: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(json_extract(event_json, '$.content_bytes')), 0) FROM audit_records WHERE json_extract(event_json, '$.actor_id') = ?1 AND json_extract(event_json, '$.device_id') = ?2 AND json_extract(event_json, '$.action') = 'filesystem.write' AND json_extract(event_json, '$.outcome') = 'auto' AND json_extract(event_json, '$.authority') = 'policy' AND json_extract(event_json, '$.timestamp_unix_ms') >= ?3",
+            params![actor_id, device_id, i64::try_from(since_unix_ms).map_err(|_| AuditError::InvalidSequence)?],
+            |row| row.get(0),
+        )?;
+        u64::try_from(bytes).map_err(|_| AuditError::InvalidSequence)
     }
 
     pub fn claim_approval_consumed(
@@ -630,9 +666,13 @@ mod tests {
             device_id: "device".into(),
             request_id: id.into(),
             action: "filesystem.read".into(),
-            target: r"D:\Proyectos\x".into(),
+            target: r"D:\Workspaces\x".into(),
             outcome: "auto".into(),
             envelope_digest: [9; 32],
+            authority: "policy".into(),
+            policy_rule: "filesystem_rule".into(),
+            policy_hash: "hash".into(),
+            content_bytes: 0,
         }
     }
 

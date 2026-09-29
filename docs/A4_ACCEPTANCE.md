@@ -8,8 +8,8 @@ A4 delivers a local laboratory browser path using the existing Firefox/WebDriver
 ## Environment
 
 - Firefox: `C:\Program Files\Mozilla Firefox\firefox.exe`, version `156.0`.
-- geckodriver: `D:\Proyectos\10_Active\vor-commander\state\drivers\geckodriver\0.37.1\geckodriver.exe`, version `0.37.1`.
-- Lab root: `D:\Proyectos\10_Active\vor-commander\state\local\a4-lab`.
+- geckodriver: `D:\Workspaces\10_Active\vor-commander\state\drivers\geckodriver\0.37.1\geckodriver.exe`, version `0.37.1`.
+- Lab root: `D:\Workspaces\10_Active\vor-commander\state\local\a4-lab`.
 - Bridge harness: `scripts/local/invoke-a4-browser-lab.ps1`.
 - Dispatch harness: `cargo test --locked --offline -p vor-dispatch a4_browser_session_enters_through_dispatcher_approval_and_audit -- --ignored --nocapture`.
 
@@ -42,7 +42,7 @@ A4 delivers a local laboratory browser path using the existing Firefox/WebDriver
 - `cargo fmt --all -- --check`: **PASS**.
 - `git diff --check -- .`: **PASS**.
 - `scripts/local/check-worktree-text.ps1`: **PASS**, selected/read 140 files, no disappeared files.
-- `python -m unittest tests.test_check_worktree_text -v`: **PASS**.
+- `C:\Users\ExampleUser\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m unittest tests.test_check_worktree_text -v`: **PASS**.
 
 ## Limits
 
