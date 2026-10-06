@@ -9,6 +9,7 @@ All the code in this repository (device agent, core crates, MCP gateway, relay, 
 - Contact: contact@brierstudios.com
 - License: MPL-2.0 (see `LICENSE`)
 - Trademark notice: see `TRADEMARKS.md`
+- OpenSSF Scorecard: [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/BrierAinz/vor-commander/badge)](https://scorecard.dev/viewer/?uri=github.com/BrierAinz/vor-commander)
 
 ## Quick Start / Instalación rápida
 
